@@ -1,0 +1,148 @@
+{
+  "api_version": 1,
+  "description": "Compatibilidad local con los contratos publicados del productor. No se resuelve nada en tiempo de ejecucion.",
+  "producer": {
+    "repository": "https://github.com/omarfrancodev/comprehensive-code-review",
+    "tag": "v2.9.0",
+    "commit": "7828852aaab390ebfeca78b229964f0b04af82d8",
+    "reference_groups": [
+      "workflow/",
+      "execution/",
+      "contracts/",
+      "archive/",
+      "reporting/",
+      "maintenance/"
+    ]
+  },
+  "review": {
+    "supported_schemas": [1, 2, 3, 4, 5, 6, 7],
+    "presentation_schemas": [4, 5, 6, 7],
+    "identity_schemas": [6, 7],
+    "review_id_schemas": [6, 7],
+    "previous_reviews_schemas": [6, 7],
+    "rereview_not_reevaluated_schemas": [6, 7],
+    "check_reference_schemas": [6, 7],
+    "change_authors_schemas": [3, 4, 5, 6, 7],
+    "coverage_areas_schemas": [2, 3, 4, 5, 6, 7],
+    "profiles": {
+      "1-4": ["economy", "balanced", "deep"],
+      "5-6": ["economy", "balanced", "deep", "extended"],
+      "7": ["focused", "standard", "deep", "extended"]
+    },
+    "current_schema": 7,
+    "presentation_kinds": ["review", "rereview", "complement"],
+    "legacy_title_without_presentation": "Code Review",
+    "verdicts": [
+      "approvable",
+      "approvable_with_reservations",
+      "not_approvable",
+      "insufficient_evidence"
+    ],
+    "finding": {
+      "statuses": ["candidate", "confirmed", "rejected", "unresolved"],
+      "priorities": ["P0", "P1", "P2", "P3"],
+      "origins": ["introduced", "preexisting", "unknown"],
+      "evidence_kinds": ["static", "executed"],
+      "final_excludes_status": "candidate"
+    },
+    "check": {
+      "statuses": ["passed", "failed", "blocked", "not_run"],
+      "failure_kinds": ["product", "fixture", "environment"]
+    },
+    "coverage": {
+      "verification": ["independent", "same_session", "skipped", "unavailable"],
+      "areas": ["A", "B", "C", "D", "E"],
+      "area_statuses": ["covered", "partial", "not_evaluated", "not_applicable"]
+    },
+    "rereview_statuses": [
+      "resolved",
+      "still_valid",
+      "withdrawn",
+      "new",
+      "not_reevaluated"
+    ],
+    "description_statuses": ["aligned", "needs_update", "unverified", "not_applicable"],
+    "resource_cleanup": ["complete", "not_needed", "pending"],
+    "resource_publication": ["not_requested", "draft", "published", "failed"]
+  },
+  "closure": {
+    "supported_schemas": [1, 2, 3, 4, 5],
+    "current_schema": 5,
+    "schema_less_compatibility": "limited",
+    "states": ["prepared", "retaining", "closing", "complete"],
+    "states_only_in_schema_5": ["processing"],
+    "cleanup_states": ["pending", "complete", "not_needed"],
+    "trace_schemas": [4, 5],
+    "required_files": ["review.json", "informe.md"],
+    "optional_files": ["measurements.json"],
+    "trace_files": ["trazabilidad.jsonl", "handoff.md"],
+    "ownership_marker": ".review-ownership.json",
+    "transition_markers": ["pending_trace", "planned_hashes"],
+    "scope_fields": [
+      "repository",
+      "mode",
+      "base",
+      "head",
+      "snapshot",
+      "target",
+      "reference"
+    ]
+  },
+  "trace": {
+    "supported_schemas": [1],
+    "file": "trazabilidad.jsonl",
+    "event_id_pattern": "E[0-9]{6}",
+    "finding_id_pattern": "F[0-9]{3,}",
+    "check_id_pattern": "C[0-9]{3,}",
+    "external_kinds": [
+      "agent",
+      "profile",
+      "discovery",
+      "check",
+      "grouped-verification",
+      "freshness",
+      "authorized-publication",
+      "cleanup",
+      "interruption"
+    ],
+    "helper_kinds": ["prepare", "register", "retain", "validation", "handoff", "close"],
+    "work_starts_processing_kinds": ["agent", "discovery", "check", "grouped-verification"],
+    "work_starts_processing_statuses": [
+      "started",
+      "completed",
+      "passed",
+      "failed",
+      "blocked",
+      "skipped"
+    ],
+    "actor_kinds": ["helper", "coordinator", "agent", "tool"],
+    "provenance_kinds": ["helper", "tool", "agent", "recovered"],
+    "relations": [
+      "verifies",
+      "supports",
+      "depends_on",
+      "follows",
+      "reuses",
+      "supersedes",
+      "records",
+      "generated_from"
+    ],
+    "max_relations_per_event": 24,
+    "max_event_bytes": 8192,
+    "cross_review_target_pattern": "CR-[0-9a-f]{20}#(E[0-9]{6}|F[0-9]{3,}|C[0-9]{3,})"
+  },
+  "limits": {
+    "metadata_bytes": 8388608,
+    "trace_bytes": 8388608,
+    "trace_events": 10000,
+    "text_preview_bytes": 2097152,
+    "hash_chunk_bytes": 1048576,
+    "stable_read_attempts": 3,
+    "stable_read_delay_seconds": 0.05,
+    "max_runs": 5000,
+    "max_depth": 6,
+    "page_size": 50,
+    "client_queue_notices": 128,
+    "replay_buffer_notices": 256
+  }
+}

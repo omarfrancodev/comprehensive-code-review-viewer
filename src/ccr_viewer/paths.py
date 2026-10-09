@@ -22,6 +22,7 @@ __all__ = [
     "ENV_ROOT",
     "DEFAULT_ROOT_PARTS",
     "RUN_SENTINELS",
+    "is_reparse",
     "resolve_root",
     "resolve_root_source",
     "safe_regular_file",
@@ -70,7 +71,7 @@ class _FrozenRoot:
     key: tuple[int, int]
 
 
-def _is_reparse(path: Path) -> bool:
+def is_reparse(path: Path) -> bool:
     """Indica si la ruta es un enlace simbólico o un punto de reparse de Windows."""
 
     status = os.lstat(path)
@@ -78,6 +79,10 @@ def _is_reparse(path: Path) -> bool:
         return True
     attributes = getattr(status, "st_file_attributes", 0)
     return bool(attributes & _REPARSE_POINT)
+
+
+#: Alias interno: ``safe_regular_file`` lo resuelve por nombre en cada llamada.
+_is_reparse = is_reparse
 
 
 def _is_within(base: Path, target: Path) -> bool:
