@@ -37,7 +37,7 @@ Each line is owned by the tests explicitly listed in its task:
 
 The repository initially contains only README, AGENTS, .gitignore, this plan and the spec. Product files listed below do not exist yet. User requested implementation in another session. Choose its execution method there; do not infer authorization to spawn agents from the plan header alone.
 
-Use a branch/worktree from updated main, under ignored .worktrees/. Do not modify the producer repository. The planned `processing` producer state is not published in v2.8.0; unknown/future schemas must remain limited until their actual contract is pinned.
+Use a branch/worktree from updated main, under ignored .worktrees/. Do not modify the producer repository. Pin published producer v2.9.0 at commit `7828852aaab390ebfeca78b229964f0b04af82d8` and the reorganized reference paths in spec section 2. Archive schemas 1–5, final review schemas 1–7 and trace schema 1 are separate contracts. Processing is supported only in archive schema 5; unknown/future schemas remain limited. The viewer is still unimplemented; these changes synchronize the handoff, not task completion.
 
 Complete Tasks 1–6 in order. Tasks 7–9 share frontend state and API interfaces and are best executed sequentially to avoid contract drift. Task 10 proves the integrated deliverable and produces a PR; merge and release are user gates. Every task has its own focused verification/commit.
 
@@ -127,24 +127,24 @@ Commands here are planned validation, not tests already run.
 - Produces: `read_snapshot(location: RunLocation, *, previous: dict|None = None) -> dict`; {files: dict, fingerprint: str, updating: bool, diagnostics: list[dict]}.
 - Produces: `adapt_run(location: RunLocation, snapshot: dict) -> dict` (ReviewView).
 - Produces: `Catalog(root: Path)` with `refresh() -> None`, `list_runs(filters: Mapping[str,str], offset: int = 0, limit: int = 50) -> dict`, `get_run(key: str) -> dict`, `locations() -> list[RunLocation]`.
-- Test utility: `build_archive(root: Path, variant: str) -> Path`; variants final_v7, legacy_v3, legacy_v5, schema_less, prepared, unknown_v99, corrupt_json, rereview_v7. `archive_inventory(root: Path) -> dict` includes relative files, bytes SHA-256 and mtime_ns.
+- Test utility: `build_archive(root: Path, variant: str) -> Path`; variants final_v7, legacy_v3, legacy_v5, schema_less, prepared, unknown_v99, corrupt_json, rereview_v7, prepared_archive_v5, processing_archive_v5, legacy_archive_v4, invalid_processing_archive_v4, pending_trace_archive_v5. The v3/v5/v7 suffixes in review variants identify final review schemas, not archive schemas; prepared remains a legacy prepared fixture. Each fixture declares its separate review/closure/trace versions. `archive_inventory(root: Path) -> dict` includes relative files, bytes SHA-256 and mtime_ns.
 
 - [ ] **Step 1: Write failing discovery/snapshot/adapter tests.**
-  Synthetic generator builds source-valid fields from the pinned v2.8.0 documents, never imports the installed skill. Unknown variants are visibly synthetic. Assert:
+  Synthetic generator builds source-valid fields from the pinned v2.9.0 documents/scripts, never imports the installed skill. contracts/sources.md records the exact tag/commit and six reference groups; compatibility.json records capabilities per review/closure/trace version. Use only public synthetic values. Unknown variants are visibly synthetic. Assert:
   ```python
   view = adapt_run(location, read_snapshot(location))
   self.assertEqual(view["review"]["profile"], "economy")
   self.assertIsNone(view["summary"]["source_review_id"])
   self.assertEqual(view["compatibility"], "historical")
   ```
-  Add discovery of prepared closure/trace without final record; malformed JSON alongside a readable run; evidence nested sentinel excluded; different hosts/namespaces with same basename not merged. Unknown_v99 preserves unknown fields/enums and says limited. Test BOM, NaN/Infinity, duplicate JSON keys, oversized metadata, 5000/depth bounds and stable keys. Add transition tests in which closure changes during reading or pending_trace exists: retain previous coherent snapshot, updating=true, exactly bounded retries and no recovery calls.
+  Add discovery of prepared closure/trace without final record; malformed JSON alongside a readable run; evidence nested sentinel excluded; different hosts/namespaces with same basename not merged. Unknown_v99 preserves unknown fields/enums and says limited. Assert schema 5 processing is supported, schema 4 processing produces a version-specific invalid-state diagnostic, and valid schema 4 prepared stays historical. Test direct prepared-to-retaining without fabricating a discovery start, and checkpoints that retain closing. Test BOM, NaN/Infinity, duplicate JSON keys, oversized metadata, 5000/depth bounds and stable keys. Add transition tests in which closure changes during reading or pending_trace exists: retain previous coherent snapshot, updating=true, exactly bounded retries and no recovery calls.
 
 - [ ] **Step 2: Verify RED.**
   Run each of `python -m unittest discover -s tests -p "test_discovery.py" -v`, `test_snapshots.py`, `test_adapters.py` using the same command form.
   Expected: missing implementation errors or failed exact assertions.
 
 - [ ] **Step 3: Implement catalog/cache/adapters.**
-  Declare API TypedDict aliases from spec section 6. Read bounded bytes through open_archive_file, parse conservatively and preserve source objects. Stat-cached catalog reads changed metadata only. Do not require naming/ownership to discover. Normalize comparable repository identity only; preserve null dates/IDs and version-dependent omissions. Current closure support is 1–4 plus schema-less limited; processing under an unsupported version renders limited. Add no unconditional directory walk of evidence and no production/private fixtures.
+  Declare API TypedDict aliases from spec section 6. Read bounded bytes through open_archive_file, parse conservatively and preserve source objects. Stat-cached catalog reads changed metadata only. Do not require naming/ownership to discover. Normalize comparable repository identity only; preserve null dates/IDs and version-dependent omissions. Current closure support is 1–5 plus schema-less limited, with states constrained by the actual archive version. Processing in schema 4 is invalid; a supplied processing in an unknown version is preserved with limited compatibility. Keep final schema 7 and trace schema 1 support unchanged. Add no unconditional directory walk of evidence and no production/private fixtures.
 
 - [ ] **Step 4: Verify GREEN and read-only behavior.**
   Run the three focused modules. Compare archive_inventory before/after discovery, snapshots and adapters byte-for-byte and mtime-for-mtime; assert no new files. Catalog ordering/page count is exact. A synthetic 1000-run unchanged refresh performs no fresh report/evidence reads using an instrumented reader counter.
@@ -176,13 +176,13 @@ Commands here are planned validation, not tests already run.
                       for item in result["checks"]))
   self.assertEqual(snapshot["files"]["review.json"]["verdict"], original_verdict)
   ```
-  Include missing hashed evidence, unsupported ownership/layout, schema-less individual valid hashes with overall limited, closure/review identity disagreement and a supported canonical valid archive. File previews truncate at 2 MiB; code is returned as text, never executable content.
+  Include missing hashed evidence, unsupported ownership/layout, schema-less individual valid hashes with overall limited, closure/review identity disagreement and a supported canonical valid archive. Add supported schema 5 ownership/trace binding, a coherent historical schema 4 archive, and pending_trace/marker transition cases that yield updating rather than verified/corrupt final state. Read-only validation never consumes or clears pending intent. File previews truncate at 2 MiB; code is returned as text, never executable content.
 
 - [ ] **Step 2: Verify RED.**
   Run `python -m unittest discover -s tests -p "test_references.py" -v` and the same form for test_integrity.py.
 
 - [ ] **Step 3: Implement exact resolver and integrity levels.**
-  Pin supported marker/layout rules from source; do not call private producer helper methods. Paths are constrained to root and IDs map only to catalogued regular files. Preserve unknown relation/reference targets. Validate supported byte guarantees without declaring semantic defect truth. No auto repair and no replacement hashes. Integrate resolved lineage/files into adapt_run without copying evidence content into the model.
+  Pin supported marker/layout rules for archive schemas 1–5 from the paths in spec section 2; do not call private producer helper methods or mutate/recover pending transactions. Paths are constrained to root and IDs map only to catalogued regular files. Preserve unknown relation/reference targets. Validate supported byte guarantees without declaring semantic defect truth. No auto repair and no replacement hashes. Integrate resolved lineage/files into adapt_run without copying evidence content into the model.
 
 - [ ] **Step 4: Verify GREEN and archive immutability.**
   Focused tests pass; inventory unchanged after preview, resolve and validation. Test large evidence hashing uses bounded chunks and no catalog startup hashing. Unsupported canonical producer changes remain limited even if selected file hashes match.
@@ -210,13 +210,14 @@ Commands here are planned validation, not tests already run.
   self.assertEqual(events[0]["sequence"], 1)
   self.assertEqual(events[0]["event_id"], "E000001")
   ```
-  Fixture E000002 has earlier known occurred_at; E000001 uses later recorded_at fallback. Assert basis labels, canonical original list intact, unknown occurrence not synthesized, wrong offsets diagnosed, impossible end-before-start warning. Explicit relations resolve to known targets; dangling/ambiguous/cyclic targets get diagnostics; no relations means no fabricated causal edges. Truncated input yields valid_prefix_length and never fully verified.
+  Fixture E000002 has earlier known occurred_at; E000001 uses later recorded_at fallback. Assert basis labels, canonical original list intact, unknown occurrence not synthesized, wrong offsets diagnosed, impossible end-before-start warning. Include helper `review_artifacts:<kind>` occurrence, tool `review_runner:<metadata path>` wrapper times, native source times and unknown nulls; distinguish actor/executor from recorder and do not infer identity from provenance. Historical trace 1 with non-null occurrence/null source remains structurally valid; new external emission rules must not retroactively reject it. A limited source with neither usable time retains a diagnosed sequence-fallback row.
+  Resolve explicit local E/F/C and cross-review `CR-<20-hex-run-id>#E000001|F001|C001` targets against the chosen catalog only. Include prior local E, a historical future E reference, discarded F/C candidates missing from the final record, legacy raw targets and unavailable cross-review targets. Reference diagnostics never become hash-chain failures; no relations means no fabricated causal edges. Preserve schema 5's emission rule (local E must already exist) in compatibility documentation without tightening historical trace verification. Truncated input yields valid_prefix_length and never fully verified.
 
 - [ ] **Step 2: Verify RED.**
   Run `python -m unittest discover -s tests -p "test_trace.py" -v`.
 
 - [ ] **Step 3: Implement schema1 chain and independent presentation order.**
-  Use the exact digest algorithm from spec section 8. Strict verification and limited display are separate. Do not mutate supplied event dicts while extracting sha256. Timelines never claim globally comparable clocks. Return raw events for original provenance and normalized relation diagnostics without guessing actor names from summaries.
+  Use the exact digest algorithm from spec section 8. Strict verification and limited display are separate. Do not mutate supplied event dicts while extracting sha256. Timelines never claim globally comparable clocks. Prefer valid observed occurrence, then valid recording time, then untimed sequence fallback as specified; preserve original timestamps/provenance and label helper operations separately from runner boundaries. No timing probes, mandatory measurements or new producer events. Return raw events for original provenance and normalized relation diagnostics without guessing actor names from summaries.
 
 - [ ] **Step 4: Verify GREEN and integrate integrity trace check.**
   Run focused trace and integrity tests. Update validate_archive to consume parse_trace for supported schemas without an import cycle (trace consumes references; integrity consumes trace; adapters do not consume integrity). Ensure open pending transitions are updating, not a verified final archive.
@@ -271,7 +272,7 @@ Commands here are planned validation, not tests already run.
 - Frontend: `subscribeNotices(onNotice: (notice: object) => void, onState: (state: string) => void): () => void` (unsubscribe).
 
 - [ ] **Step 1: Write failing deterministic live tests.**
-  Use fake clock, atomic synthetic writer and two subscribers. Assert one collector per root/process, 2-second poll, 10-second rescan, 120-second activity threshold, 256 replay and 128 queue bounds. Oversubscribed/expired cursors emit resync; heartbeat doesn't mark a run active; unsubscribing the last client stops polling. Updating marker/trace between reads does not publish a contradictory snapshot. Initial updated_at alone yields open_activity_unknown. Complete, interrupted/resumed, final-with-pending-closure and blocked-check cases retain distinct meanings. No percentage field is returned.
+  Use fake clock, atomic synthetic writer and two subscribers. Assert one collector per root/process, 2-second poll, 10-second rescan, 120-second activity threshold, 256 replay and 128 queue bounds. Oversubscribed/expired cursors emit resync; heartbeat doesn't mark a run active; unsubscribing the last client stops polling. Updating marker/trace between reads does not publish a contradictory snapshot. Initial schema 5 processing or updated_at alone yields open_activity_unknown; display the source processing state separately as work begun. Test observed prepared-to-processing-to-retaining-to-closing-to-complete with coherent trace/marker updates and no regression on closing checkpoints. Prepared-only setup changes do not imply discovery. A terminal result can be the first exposed work milestone; do not invent a start. Valid schema 4 states remain historical. Pending trace intent keeps the previous coherent snapshot updating; no recovery writes occur. Complete, interrupted/resumed, final-with-pending-closure and blocked-check cases retain distinct meanings. No percentage field is returned.
 
 - [ ] **Step 2: Verify RED.**
   Run `python -m unittest discover -s tests -p "test_live.py" -v`.
@@ -393,18 +394,18 @@ Commands here are planned validation, not tests already run.
 
 **Interfaces:**
 - Browser test server helper: `startFixtureServer(variant:string): Promise<{url:string,root:string,stop:Function}>`; bootstraps actual cookie via app, never disables security.
-- Fixture transition helper: `advance_fixture(run: Path, transition: str) -> None`; transitions prepare_to_discovery, add_check, transient_retention, retained_then_closed. This is explicitly a test producer, not viewer logic.
+- Fixture transition helper: `advance_fixture(run: Path, transition: str) -> None`; transitions prepare_to_discovery, add_check, transient_retention, retained_then_closed. prepare_to_discovery publishes a schema 5 processing/trace/marker transaction with an observed discovery milestone; transient_retention exercises pending intent without viewer recovery; retained_then_closed preserves the actual closing/complete distinction. Include direct prepared retention as a compatible separate case. This is explicitly a test producer, not viewer logic.
 - CI: Ubuntu and Windows Python3.10/3.12 backend matrix; Node22 JS; Chromium/Firefox browser job on Ubuntu. Synthetic roots only.
 
 - [ ] **Step 1: Write failing integrated acceptance tests.**
-  Installed wheel launched outside repository and without skill; default/env/explicit root fixtures; empty prepared run appears; atomic test producer changes are seen <=4 seconds; final report/cierre/trace become available; integrity mismatch stays separate from source verdict. Browser can replay, pause incoming events, use Markdown and navigate historic lineage. Track before/after inventory for browse/validate/follow without producer mutations and assert zero file/hash/mtime changes. In transition test, account only for explicit fixture-writer changes. Add arbitrary-path/Host/session attack, keyboard/reduced motion, 1000-run cache bounds, unknown-schema/raw viewer and orphan relations.
+  Installed wheel launched outside repository and without skill; default/env/explicit root fixtures; empty prepared and schema 5 processing runs appear with distinct source/activity states; atomic test producer changes are seen <=4 seconds; final report/cierre/trace become available; integrity mismatch stays separate from source verdict. Browser can replay, pause incoming events, use Markdown and navigate historic lineage. Track before/after inventory for browse/validate/follow without producer mutations and assert zero file/hash/mtime changes. In transition test, account only for explicit fixture-writer changes. Add arbitrary-path/Host/session attack, keyboard/reduced motion, 1000-run cache bounds, unknown-schema/raw viewer and orphan relations.
 
 - [ ] **Step 2: Verify RED for integration gaps.**
   Run `python -m unittest discover -s tests -p "test_packaging.py" -v`, test_readonly.py and `npm run test:browser -- --project=chromium tests/browser/acceptance.spec.mjs`.
   Only fix failures that correspond to the spec; do not weaken read-only/security assertions to make testing easy.
 
 - [ ] **Step 3: Complete wiring/package/CI and user documentation.**
-  Ensure wheel includes every static/vendor resource and contract capabilities needed offline, excludes tests/private fixtures/node_modules/worktrees. README changes status only after verification, documents installation and console/module commands. docs/compatibility records tested schemas versus limited future processing support; docs/usage explains last activity, partial traces, recorded/occurred distinction and integrity vs verdict. Keep runtime independent; explain exact dependency lock/vendor update procedure and project-license release gate. CI uses locked dev dependencies and no production archive. Real local archive smoke inspection, if desired, needs explicit user's source-access consent and must not copy data into public tests.
+  Ensure wheel includes every static/vendor resource and contract capabilities needed offline, excludes tests/private fixtures/node_modules/worktrees. README changes status only after verification, documents installation and console/module commands. docs/compatibility records the v2.9.0 pin/reorganized paths, tested review 1–7/archive 1–5/trace 1 support, schema 4 invalid processing, historical emission-rule compatibility and limited unknown future schemas; docs/usage explains last activity, partial traces, recorded/occurred distinction and integrity vs verdict. Keep runtime independent; explain exact dependency lock/vendor update procedure and project-license release gate. CI uses locked dev dependencies and no production archive. Real local archive smoke inspection, if desired, needs explicit user's source-access consent and must not copy data into public tests.
 
 - [ ] **Step 4: Verify GREEN with full checks after final changes.**
   `python -m unittest discover -s tests -p "test_*.py" -v`.
@@ -432,4 +433,4 @@ Commands here are planned validation, not tests already run.
 
 ## Suggested message for the implementation session
 
-Read AGENTS.md, the design spec and this plan in comprehensive-code-review-viewer. Implement only the viewer in a development branch/worktree, using the approved execution method. Respect read-only artifacts and pinned compatibility; the producer's processing/timing changes belong to a different session. Verify each task, create the PR and wait for my review before merge/release. Stop and consult me if implementation requires changing an agreed behavior.
+Read AGENTS.md, the design spec and this plan in comprehensive-code-review-viewer. Implement only the viewer in a development branch/worktree, using the approved execution method. Respect read-only artifacts and pinned v2.9.0 compatibility, including the reorganized references, archive schema 5 processing and observed timing/relations. Those producer changes are already published; implement only their viewer-side support and preserve legacy/unknown data without altering the producer. Verify each task, create the PR and wait for my review before merge/release. Stop and consult me if implementation requires changing an agreed behavior.

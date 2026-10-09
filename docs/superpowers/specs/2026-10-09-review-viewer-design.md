@@ -35,17 +35,21 @@ This document intentionally includes no private repository names, proprietary fi
 
 ### Available producer contracts
 
-Canonical source of truth: skill v2.8.0, tag `v2.8.0` in [the producer repository](https://github.com/omarfrancodev/comprehensive-code-review/tree/v2.8.0).
+Canonical source of truth: published skill v2.9.0, tag `v2.9.0` at commit `7828852aaab390ebfeca78b229964f0b04af82d8` in [the producer repository](https://github.com/omarfrancodev/comprehensive-code-review/tree/v2.9.0). Pin this tag/commit and the following source paths in compatibility metadata; do not import the installed skill.
 
-- `references/result-contract.md`: final schemas 1–7; exact field availability depends on version.
-- `references/artifacts.md` and `scripts/review_artifacts.py`: archive schemas 1–4, ownership, retention and closure.
-- `references/lifecycle-trace.md` and `scripts/review_trace.py`: trace schema 1.
-- `references/identifiers.md`, `references/re-review.md`, `references/review-areas.md`: identity, linkage and coverage.
-- Future source-file reorganizations change locations, not the pinned meanings. Store contract provenance by tag and source paths; do not import the installed skill.
+- `references/contracts/result-contract.md`: final review schemas 1–7; exact field availability depends on version. Final schema 7 remains unchanged.
+- `references/archive/artifacts.md` and `scripts/review_artifacts.py`: archive/closure schemas 1–5, ownership, retention and closure.
+- `references/archive/lifecycle-trace.md` and `scripts/review_trace.py`: trace schema 1, unchanged field set and hash algorithm.
+- `references/contracts/identifiers.md`, `references/workflow/re-review.md`, `references/workflow/review-areas.md`: identity, linkage and coverage.
+- `references/reporting/report-format.md`, `references/reporting/delivery.md`, `references/reporting/handoff.md`: report presentation, explicit deliveries and historical handoff. Deliveries remain outside v0.1 archive import scope.
 
-Current archive states are `prepared|retaining|closing|complete`. The agreed producer change adds `processing`, but it is NOT part of published v2.8.0. Its future archive schema and transition rules must be obtained from the producer release before advertising strict validation for that version. A viewer can display a supplied `processing` value with limited-compatibility labeling in the meantime.
+References now belong to six responsibility groups: `workflow/`, `execution/`, `contracts/`, `archive/`, `reporting/`, `maintenance/`. These are producer documentation locations, not review artifact directories or runtime dependencies. Future reorganizations require updating pinned provenance, not searching an installed skill.
 
-The producer will remain the only durable writer. It is expected to capture observed `occurred_at`, actual participants and explicit relations where available. The viewer works with absent fields/data and cannot force those changes.
+Archive schema 5 supports `prepared → processing → retaining → closing → complete`. Schemas 1–4 retain `prepared|retaining|closing|complete`; `processing` in schema 4 is invalid, not a supported historical value. Unknown future schemas remain limited and preserve raw values. The earlier inspection above is a historical snapshot, not a claim that those archives have schema 5.
+
+The first observed milestone with kind `agent|discovery|check|grouped-verification` and status `started|completed|passed|failed|blocked|skipped` moves schema 5 from prepared to processing in the existing trace append transaction. Planned/pending assignments, profile selection, registration, authorization and preparatory validation do not start processing. A terminal result can be the first exposed milestone; direct retention from prepared remains compatible and does not invent a past start. Checkpoints in closing do not regress the state. Processing means work began, not that a process is currently alive or that continuous activity is observable.
+
+The coordinator remains the sole durable writer. Helper milestones now capture their logical operation's UTC `occurred_at` with source `review_artifacts:<kind>`; `recorded_at` is captured separately at recording. Native events use exposed source times only. Optional existing runner metadata maps started to started_at and completed/passed/failed/blocked/skipped to finished_at, with source `review_runner:<metadata path>`; these are wrapper boundaries, not model activity. Missing times/participants remain unknown; no measurements or metadata collection is required. Recovery preserves the original event bytes and times. The viewer reads these facts and never triggers mutations, recovery or additional producer work.
 
 ## 3. Runtime and distribution
 
@@ -162,7 +166,7 @@ IntegrityReport = {
 }
 ```
 
-Supported review schema versions are 1–7. Unknown versions/fields/enums remain in `review`/`closure` and a raw JSON viewer; use known fields conservatively with `limited` compatibility. Do not label unknown-schema semantic/ownership validation verified. Canonical closure schemas 1–4 have adapter-specific checks; schema-less historic closures render the available fields but identity/ownership assurance is limited.
+Supported review schema versions are 1–7. Unknown versions/fields/enums remain in `review`/`closure` and a raw JSON viewer; use known fields conservatively with `limited` compatibility. Do not label unknown-schema semantic/ownership validation verified. Canonical closure schemas 1–5 have adapter-specific checks, including version-specific allowed states; schema-less historic closures render the available fields but identity/ownership assurance is limited.
 
 A schema number alone is not proof of valid content. Shape validation covers field types and version availability; semantic finding truth and attributed authorship remain producer assertions.
 
@@ -221,7 +225,7 @@ Derived display states:
 - other open state with an observed file change within 120 seconds → open_recent_activity.
 - other open state → open_activity_unknown.
 
-`updated_at` alone on initial load does not prove a live process. Phase comes from explicit trace milestone kinds/statuses, never a directory name or free-text summary parsing. Blocked/failed checks remain local results; do not assert the whole review stopped. No percentage from event counts. The app shows last registered update and, separately, when the viewer last detected a change.
+Show schema 5 `processing` as “trabajo iniciado”, separately from the derived activity state. Initial `processing` or `updated_at` alone does not prove recent activity or a live process. A changed prepared run can reflect setup; do not label it discovery unless an explicit milestone supports that phase. Phase comes from explicit trace milestone kinds/statuses, never a directory name or free-text summary parsing. Blocked/failed checks remain local results; do not assert the whole review stopped. No percentage from event counts. The app shows last registered update and, separately, when the viewer last detected a change.
 
 When review.json/informe.md appear, enable their tabs without resetting selection/scroll. Evidence references can be unavailable before retention. The viewer does not follow former temporary paths to display early candidates or logs.
 
@@ -229,11 +233,13 @@ When review.json/informe.md appear, enable their tabs without resetting selectio
 
 Modes: live follow; paused review of buffered events; historical playback. Controls: previous/next, play/pause, slider, start/end and speed 0.5x/1x/2x/4x. Fixed playback interval is 800 ms at 1x. This interval is visualization speed, never claimed execution duration. Disable animation with prefers-reduced-motion while retaining steps/selection.
 
-Default temporal view uses declared valid `occurred_at`, otherwise `recorded_at`; sort by that time then sequence, and label each event `execution time` or `recording fallback`. The canonical recording-order list is always available and remains sequence-ordered. Mixed sources/time bases do not establish a global execution order. Show timestamps in the browser zone, UTC in detail, and their provenance source. Preserve event IDs/hash order regardless of presentation sorting.
+Default temporal view uses declared valid `occurred_at`, otherwise valid `recorded_at`; sort by that time then sequence, and label each event `observed occurrence` or `recording fallback`. Distinguish helper logical-operation times, runner wrapper boundaries and native source times using recorded provenance. If neither timestamp is usable in a limited/invalid source, keep an untimed row after timed rows in sequence order, labeled `sequence fallback`; diagnose the missing time without synthesizing one. The canonical recording-order list is always available and remains sequence-ordered. Mixed sources/time bases do not establish a global execution order. Show timestamps in the browser zone, UTC in detail, and their provenance source. Preserve event IDs/hash order regardless of presentation sorting.
 
-Do not fill missing occurrence time from narrative or current time. Existing runner measurements can be displayed only if an explicit retained source provides them; require compatible source identity for a duration. Do not subtract two fallback recording times and label the result execution time. Negative/inconsistent timing gets a warning.
+Do not fill missing occurrence time from narrative, recorded_at or current time. Historical trace schema 1 events may legitimately have null occurred_at or a non-null occurrence with null provenance.source; preserve them without applying schema 5 emission requirements retroactively. New schema 5 external event emission requires an identifiable source for a non-null occurrence; this is distinct from unchanged trace schema 1 structural verification. Existing runner measurements can be displayed only if an explicit retained source provides them; require compatible source identity for a duration. Do not subtract two fallback recording times and label the result execution time. Negative/inconsistent timing gets a warning.
 
-Relations use the producer's `relation,target` pairs. Recognize same-run E###### events, F/C IDs and explicit cross-review references according to the available pinned producer contract; unknown forms remain unresolved text. Known relation types: verifies, supports, depends_on, follows, reuses, supersedes, records, generated_from. Report dangling/ambiguous targets and cycles; never add causal edges from mere recording adjacency.
+Relations use the producer's `relation,target` pairs. Recognize same-run `E000001`, `F001`, `C001` and known cross-review `CR-<20-hex-run-id>#E000001|F001|C001` forms. Resolve cross-review targets only against the selected root/catalog, without searching former paths or fetching archives. Bounded legacy/noncanonical/external targets remain raw unresolved text. Known relation types: verifies, supports, depends_on, follows, reuses, supersedes, records, generated_from. Existing limits remain 24 relations and 8 KiB per event.
+
+Schema 5 emission requires same-run six-digit E targets to exist earlier in the trace; self/future/missing events fail before mutation. This emission rule does not retroactively invalidate historical trace schema 1 chains. F/C targets can be assigned candidates later discarded; absence from the final record is an unresolved-reference diagnostic, not archive or hash-chain corruption. Report dangling/ambiguous targets and cycles separately from byte integrity; never add causal edges from mere recording adjacency or matching summaries/ABCDE areas.
 
 Offer a primary event sequence and optional participant lanes/dependency connections only where recorded actor/executor and explicit relations justify them. Recorder, actor and executor are separate detail fields. Do not extract agents from summary text to manufacture lanes. No trace → unavailable message. Invalid/truncated trace → valid prefix with conspicuous limitation and no fully verified badge.
 
@@ -272,11 +278,11 @@ HTTP 400 invalid options/request, 403 invalid session/host/origin/path policy, 4
 
 - Installed wheel works outside a checkout/skill installation and serves packaged assets offline.
 - The selected/default root is respected; invalid roots create no files and do not fall back.
-- Final, historical, open, malformed, schema-less and unknown-version runs coexist.
+- Final, historical, open, malformed, schema-less and unknown-version runs coexist, including schema 5 processing and version-specific rejection of processing in schema 4.
 - Source IDs, authors/responsible, verdicts, check revisions and lineage survive presentation.
 - Raw archive bytes, file list and mtimes remain unchanged before/after browse/follow/validate tests.
 - Coherent live changes appear within 4 seconds in a deterministic test, without archive corruption warnings during valid producer transitions.
-- Occurrence-time preference and visible recording fallback work; sequence/hash IDs remain stable.
+- Occurrence-time preference, provenance labels and visible recording/sequence fallback work; sequence/hash IDs remain stable. Historical timestamps/relations are not retroactively subjected to new emission rules.
 - Step controls, autoplay, paused incoming events, reduced motion and keyboard actions pass browser tests.
 - Dangling relations, clock inconsistencies, missing trace/evidence and hash mismatches are explicit.
 - Outside-root paths, reparse points, malicious Markdown and hostile Host/Origin/session requests are blocked.
