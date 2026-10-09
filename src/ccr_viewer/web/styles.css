@@ -1,0 +1,133 @@
+:root {
+  color-scheme: light dark;
+  --fondo: #ffffff;
+  --superficie: #f5f6f8;
+  --texto: #16191d;
+  --texto-suave: #5b636d;
+  --borde: #d6d9de;
+  --acento: #2f5d8c;
+  --error: #8c2f2f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fondo: #14171b;
+    --superficie: #1d2126;
+    --texto: #e8eaed;
+    --texto-suave: #a2abb5;
+    --borde: #333a42;
+    --acento: #86b4e8;
+    --error: #e08a8a;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, "Segoe UI", sans-serif;
+  background: var(--fondo);
+  color: var(--texto);
+  line-height: 1.5;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+}
+
+.skip-link:focus {
+  left: 0.5rem;
+  top: 0.5rem;
+  padding: 0.5rem;
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+}
+
+.app-header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--borde);
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.raiz {
+  margin: 0.25rem 0 0;
+  color: var(--texto-suave);
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+
+.app-main {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+}
+
+@media (min-width: 900px) {
+  .app-main {
+    grid-template-columns: 20rem 1fr;
+    align-items: start;
+  }
+}
+
+.biblioteca,
+.revision {
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+  padding: 1rem;
+  background: var(--superficie);
+}
+
+.biblioteca h2,
+.revision h2 {
+  margin-top: 0;
+  font-size: 1rem;
+}
+
+.estado {
+  color: var(--texto-suave);
+  font-size: 0.9rem;
+}
+
+.estado--error {
+  color: var(--error);
+}
+
+.lista-revisiones {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.lista-revisiones button {
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--borde);
+  border-radius: 4px;
+  background: var(--fondo);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.lista-revisiones button:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

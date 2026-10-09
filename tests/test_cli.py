@@ -121,14 +121,26 @@ class MainTests(unittest.TestCase):
         self.assertIn("--root", stderr.getvalue())
         self.assertFalse((home / ".comprehensive-code-review").exists())
 
-    def test_resolved_root_is_displayed(self) -> None:
+    def test_valid_root_delegates_to_the_server(self) -> None:
         root = self.tmp / "reviews"
         root.mkdir()
-        stdout = io.StringIO()
-        with contextlib.redirect_stdout(stdout):
+        seen: list[object] = []
+        with mock.patch("ccr_viewer.server.serve", side_effect=lambda config: seen.append(config) or 0):
             code = main(["--root", str(root), "--no-browser"])
         self.assertEqual(code, 0)
-        self.assertIn(str(root.resolve()), stdout.getvalue())
+        self.assertEqual(len(seen), 1)
+        self.assertEqual(seen[0].root, root.resolve())
+        self.assertEqual(seen[0].selected_by, "explicit")
+        self.assertFalse(seen[0].open_browser)
+
+    def test_invalid_root_never_starts_the_server(self) -> None:
+        missing = self.tmp / "inexistente"
+        with mock.patch("ccr_viewer.server.serve") as served:
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                code = main(["--root", str(missing), "--no-browser"])
+        self.assertNotEqual(code, 0)
+        served.assert_not_called()
 
     def test_invalid_host_argument_returns_nonzero_without_traceback(self) -> None:
         stderr = io.StringIO()

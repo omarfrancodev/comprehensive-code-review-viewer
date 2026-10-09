@@ -96,5 +96,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"{_PROGRAM}: {error}", file=sys.stderr)
         return 1
 
-    print(f"Raíz del archivo ({config.selected_by}): {config.root}")
-    return 0
+    # El servidor se importa sólo después de validar la raíz y responder --version.
+    from .server import serve
+
+    return serve(config)

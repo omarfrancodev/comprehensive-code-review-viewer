@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Visor de revisiones — Comprehensive Code Review</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#contenido">Saltar al contenido</a>
+    <header class="app-header">
+      <h1>Visor de revisiones</h1>
+      <p id="raiz" class="raiz">Cargando la raíz del archivo…</p>
+    </header>
+    <main id="contenido" class="app-main">
+      <aside id="biblioteca" class="biblioteca" aria-label="Biblioteca de revisiones">
+        <h2>Revisiones</h2>
+        <p id="biblioteca-estado" class="estado">Preparando la biblioteca…</p>
+      </aside>
+      <section id="revision" class="revision" aria-live="polite">
+        <h2>Selecciona una revisión</h2>
+        <p class="estado">Las vistas de cada revisión aparecerán aquí.</p>
+      </section>
+    </main>
+    <script type="module" src="/assets/app.js"></script>
+  </body>
+</html>
