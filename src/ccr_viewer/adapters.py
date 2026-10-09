@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .discovery import RunLocation, diagnostic, discover_runs
+from .references import lineage_from, list_files, resolve_reference
 from .snapshots import read_snapshot
 
 __all__ = [
@@ -167,8 +168,20 @@ def _display_state(archive_state: Any) -> str:
     return "open_activity_unknown"
 
 
-def adapt_run(location: RunLocation, snapshot: Mapping[str, Any]) -> dict:
-    """Construye la ``ReviewView`` de una corrida preservando todos los valores de origen."""
+def _lineage(review: dict | None, closure: dict | None, catalog: Any, location: RunLocation) -> list[dict]:
+    """Linaje declarado por la fuente, resuelto contra el catálogo sin adivinar destinos."""
+
+    if catalog is None:
+        return []
+    return lineage_from(review, closure, catalog, location, resolve_reference)
+
+
+def adapt_run(location: RunLocation, snapshot: Mapping[str, Any], catalog: Any = None) -> dict:
+    """Construye la ``ReviewView`` de una corrida preservando todos los valores de origen.
+
+    ``catalog`` es opcional: sin él no se puede resolver linaje entre corridas, así
+    que la lista queda vacía en lugar de adivinar destinos.
+    """
 
     files = _as_dict(snapshot.get("files"))
     review = files.get("review.json", {}).get("data")
@@ -256,8 +269,8 @@ def adapt_run(location: RunLocation, snapshot: Mapping[str, Any]) -> dict:
         "compatibility": _compatibility(review, closure, state_issue),
         "review": review,
         "closure": closure,
-        "lineage": [],
-        "files": [],
+        "lineage": _lineage(review, closure, catalog, location),
+        "files": list_files(location),
         "updating": bool(snapshot.get("updating")),
         "diagnostics": diagnostics,
     }
@@ -352,7 +365,7 @@ class Catalog:
     def _read(self, key: str, location: RunLocation) -> None:
         snapshot = read_snapshot(location, previous=self._snapshots.get(key))
         self._snapshots[key] = snapshot
-        self._views[key] = adapt_run(location, snapshot)
+        self._views[key] = adapt_run(location, snapshot, self)
         self._signatures[key] = self._signature(location)
 
     def _drop(self, key: str) -> None:

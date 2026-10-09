@@ -393,6 +393,8 @@ def build_archive(root: Path, variant: str, overrides: tuple[str, ...] = ()) -> 
                  "reference": "archivo/anterior",
                  "verified": True}
             ]
+        if "mismatched_review_id" in overrides and "review_id" in review:
+            review["review_id"] = "CR-9999999999999999zzzz"
         if variant == "unknown_v99":
             review["campo_futuro"] = {"estado": "desconocido"}
             review["presentation"] = {"kind": "revision-futura", "subject": "Asunto futuro"}
@@ -416,6 +418,10 @@ def build_archive(root: Path, variant: str, overrides: tuple[str, ...] = ()) -> 
         return run
 
     _write_closure(run, closure, write_marker="no_ownership" not in overrides)
+    if "bad_marker" in overrides:
+        marker = json.loads((run / ".review-ownership.json").read_text(encoding="utf-8"))
+        marker["owner_id"] = "f" * 32
+        (run / ".review-ownership.json").write_bytes(canonical_json_bytes(marker))
     return run
 
 
