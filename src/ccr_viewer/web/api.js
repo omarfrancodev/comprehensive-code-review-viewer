@@ -60,18 +60,26 @@ export const validateRun = (key) => request(`/api/runs/${key}/validate`, { metho
 
 /**
  * Suscribe la aplicación a los avisos del servidor.
+ *
+ * El navegador reenvía `Last-Event-ID` automáticamente al reconectar; si el
+ * servidor ya no conserva ese cursor, envía un aviso `resync` y toca recargar
+ * una instantánea coherente en lugar de perder avisos.
+ *
  * Devuelve la función para cancelar la suscripción.
  */
 export function subscribeNotices(onNotice, onState) {
   const source = new EventSource("/api/events", { withCredentials: true });
   source.onopen = () => onState("connected");
   source.onerror = () => onState("disconnected");
-  source.onmessage = (event) => {
+  source.addEventListener("notice", (event) => {
+    let notice;
     try {
-      onNotice(JSON.parse(event.data));
+      notice = JSON.parse(event.data);
     } catch {
       onState("disconnected");
+      return;
     }
-  };
+    onNotice(notice);
+  });
   return () => source.close();
 }

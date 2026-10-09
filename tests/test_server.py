@@ -70,6 +70,7 @@ class ServerTestCase(unittest.TestCase):
             "/api/session", "POST", body={"token": self.server.token}
         )
         self.assertEqual(status, 200, body)
+        self.session_cookie = headers.get("Set-Cookie", "").split(";")[0]
         return status, headers, body
 
     def json_api(self, path: str, method: str = "GET", **kwargs):
@@ -237,6 +238,58 @@ class ApiRouteTests(ServerTestCase):
         fresh = self._build_opener()
         status, _, _ = self.request("/api/events", opener=fresh)
         self.assertEqual(status, 403)
+
+
+class EventStreamTests(ServerTestCase):
+    def test_sessionless_events_route_is_denied(self) -> None:
+        fresh = self._build_opener()
+        status, _, _ = self.request("/api/events", opener=fresh)
+        self.assertEqual(status, 403)
+
+    def test_events_route_requires_get(self) -> None:
+        self.bootstrap()
+        status, _, _ = self.api("/api/events", "POST", body={})
+        self.assertEqual(status, 405)
+
+    def test_stream_sends_a_first_notice_and_uses_event_ids(self) -> None:
+        self.bootstrap()
+        status, headers, chunk = self._read_stream()
+        self.assertEqual(status, 200)
+        self.assertIn("text/event-stream", headers["Content-Type"])
+        self.assertIn(b"event: notice", chunk)
+        self.assertIn(b"data: {", chunk)
+        self.assertRegex(chunk.decode("utf-8"), "id: [0-9]+")
+
+    def test_two_subscribers_share_one_collector(self) -> None:
+        self.bootstrap()
+        first = self._read_stream()
+        second = self._read_stream()
+        self.assertEqual(self.server.collector.client_count(), 2)
+
+    def _read_stream(self, headers: dict | None = None) -> tuple[int, dict, bytes]:
+        """Abre el flujo SSE, lee el primer aviso y cierra la conexión."""
+
+        request = urllib.request.Request(
+            self.base + "/api/events",
+            headers={
+                "Origin": self.origin,
+                "Accept": "text/event-stream",
+                "Cookie": getattr(self, "session_cookie", ""),
+                **(headers or {}),
+            },
+        )
+        response = self._build_opener().open(request, timeout=15)
+        try:
+            collected = b""
+            terminator = b"\n\n"
+            while terminator not in collected:
+                chunk = response.read(1)
+                if not chunk:
+                    break
+                collected += chunk
+            return response.status, dict(response.headers), collected
+        finally:
+            response.close()
 
 
 class StaticAssetTests(ServerTestCase):

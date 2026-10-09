@@ -9,8 +9,10 @@ escribe en el archivo.
 from __future__ import annotations
 
 import json
+import queue
 import secrets
 import threading
+import time
 import webbrowser
 from http import HTTPStatus
 from http.cookies import SimpleCookie
@@ -22,6 +24,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from . import __version__
 from .adapters import Catalog
 from .integrity import validate_archive
+from .live import HEARTBEAT_SECONDS, LiveCollector
 from .paths import CcrViewerError, RootConfig
 from .references import list_files, read_preview
 from .trace import parse_trace
@@ -61,6 +64,31 @@ STATIC_RESOURCES = {
 _OPAQUE_ID_LENGTH = 32
 
 
+class _Streaming(Exception):
+    """Marca una respuesta que se escribe de forma incremental (SSE)."""
+
+    def __init__(self, stream) -> None:
+        super().__init__("streaming")
+        self.stream = stream
+
+
+class _Events:
+    """Suscripción acotada de un cliente al flujo de avisos."""
+
+    def __init__(self, request: dict) -> None:
+        self.collector = request["collector"]
+        self.client = self.collector.subscribe(request["cursor"])
+
+    def next_notice(self, timeout: float) -> dict | None:
+        try:
+            return self.client.get(timeout=timeout)
+        except queue.Empty:
+            return None
+
+    def close(self) -> None:
+        self.collector.unsubscribe(self.client)
+
+
 class _RequestError(Exception):
     """Fallo de transporte o de política con su código HTTP y su código estable."""
 
@@ -87,6 +115,7 @@ class ViewerServer:
         self._sessions: set[str] = set()
         self._sessions_lock = threading.Lock()
         self._logs: list[str] = []
+        self.collector = LiveCollector(catalog)
         self._httpd: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
         self.authority = ""
@@ -114,6 +143,19 @@ class ViewerServer:
             self._thread.join(timeout=10)
         self._httpd = None
         self._thread = None
+        self.collector.stop()
+
+    def _events_request(self, headers) -> dict:
+        """Prepara la suscripción SSE del cliente a la que se delivers en _Events."""
+
+        raw = headers.get("Last-Event-ID")
+        cursor: int | None = None
+        if raw is not None:
+            try:
+                cursor = int(raw)
+            except ValueError:
+                cursor = None
+        return {"collector": self.collector, "cursor": cursor}
 
     # -- sesión ----------------------------------------------------------
 
@@ -160,8 +202,7 @@ class ViewerServer:
             return _json_response(200, self._route_runs(query))
         if path == "/api/events":
             self._require_method(method, ("GET",))
-            raise _RequestError(503, "events_unavailable",
-                                "El seguimiento en vivo todavía no está disponible.")
+            raise _Streaming(_Events(self._events_request(headers)))
         if path.startswith("/api/runs/"):
             return self._route_run(method, path[len("/api/runs/") :], query)
         raise _RequestError(404, "unknown_route", "Recurso no reconocido.")
@@ -432,6 +473,8 @@ def _make_handler(owner: ViewerServer):
                     status, content_type, payload, extra = self._serve_static(method, path)
                 owner.log(f"{method} {path} -> {status}")
                 self._send(status, content_type, payload, extra)
+            except _Streaming as stream:
+                self._serve_events(stream.stream)
             except _RequestError as error:
                 owner.log(f"{method} {self.path.split('?', 1)[0]} -> {error.status}")
                 payload = json.dumps(
@@ -499,6 +542,41 @@ def _make_handler(owner: ViewerServer):
             except (OSError, ValueError):
                 raise _RequestError(404, "unknown_route", "Recurso no reconocido.") from None
             return 200, STATIC_RESOURCES[name], payload, {}
+
+        def _serve_events(self, stream) -> None:
+            """Escribe el flujo SSE. Los comentarios de latencia no son actividad."""
+
+            self.close_connection = True
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Connection", "close")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+            self.end_headers()
+            last_beat = time.monotonic()
+            try:
+                while True:
+                    notice = stream.next_notice(timeout=1.0)
+                    if notice is None:
+                        if time.monotonic() - last_beat >= HEARTBEAT_SECONDS:
+                            self.wfile.write(b": latencia\n\n")
+                            self.wfile.flush()
+                            last_beat = time.monotonic()
+                        continue
+                    payload = json.dumps(notice, ensure_ascii=False).encode("utf-8")
+                    self.wfile.write(
+                        b"id: "
+                        + str(notice["cursor"]).encode("ascii")
+                        + b"\nevent: notice\ndata: "
+                        + payload
+                        + b"\n\n"
+                    )
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass
+            finally:
+                stream.close()
 
         def _send(self, status: int, content_type: str, payload: bytes,
                   extra: dict) -> None:
