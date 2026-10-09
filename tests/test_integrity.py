@@ -180,6 +180,27 @@ class ValidateArchiveTests(unittest.TestCase):
         report, _, _, _ = self.validate("final_v7", "duplicate_keys")
         self.assertNotEqual(report["status"], "verified")
 
+    def test_tampered_trace_is_reported_by_the_integrity_chain_check(self) -> None:
+        # La comprobación de traza debe consumir parse_trace, no limitarse a
+        # comprobar que el archivo existe.
+        run = with_overrides("final_v7")(self.root)
+        location = location_for(run, self.root)
+        trace_path = run / "trazabilidad.jsonl"
+        lines = trace_path.read_bytes().splitlines(keepends=True)
+        event = json.loads(lines[1])
+        event["summary"] = "Texto alterado sin recalcular el hash"
+        lines[1] = json.dumps(
+            event, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8") + b"\n"
+        trace_path.write_bytes(b"".join(lines))
+
+        report = validate_archive(location, read_snapshot(location))
+        trace_check = next(
+            item for item in report["checks"] if item["name"] == "trazabilidad.jsonl"
+        )
+        self.assertEqual(trace_check["status"], "failed")
+        self.assertEqual(report["status"], "failed")
+
     def test_validation_does_not_modify_the_archive(self) -> None:
         run = with_overrides("final_v7")(self.root)
         location = location_for(run, self.root)

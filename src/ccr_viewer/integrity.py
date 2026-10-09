@@ -16,6 +16,7 @@ from typing import Any, Mapping
 from .adapters import CLOSURE_SCHEMAS, CLOSURE_STATES, CLOSURE_STATES_SCHEMA_5
 from .discovery import RunLocation, diagnostic
 from .paths import UnsafePathError, open_archive_file
+from .trace import parse_trace
 
 __all__ = ["hash_regular_file", "validate_archive", "HASH_CHUNK_BYTES"]
 
@@ -188,20 +189,24 @@ def _validate_inventory(root: Path, closure: dict) -> list[dict]:
     return checks
 
 
-def _validate_trace(root: Path, closure: dict) -> dict:
+def _validate_trace(root: Path, closure: dict, data: bytes | None) -> dict:
     schema = closure.get("schema_version")
+    name = "trazabilidad.jsonl"
     if not isinstance(schema, int) or schema not in _TRACE_ARCHIVE_SCHEMAS:
-        return _check("trazabilidad.jsonl", "limited", "Este esquema no exige traza obligatoria.")
-    if not (root / "trazabilidad.jsonl").exists():
-        return _check("trazabilidad.jsonl", "failed", "La traza es obligatoria y no está presente.")
+        return _check(name, "limited", "Este esquema no exige traza obligatoria.")
+    if data is None:
+        return _check(name, "failed", "La traza es obligatoria y no está presente.")
     descriptor = closure.get("trace")
-    if not isinstance(descriptor, dict):
-        return _check("trazabilidad.jsonl", "limited", "El cierre no declara un descriptor de traza.")
-    return _check(
-        "trazabilidad.jsonl",
-        "passed",
-        f"Traza presente con {descriptor.get('events')} eventos declarados en el cierre.",
-    )
+    view = parse_trace(data, descriptor if isinstance(descriptor, dict) else None,
+                       closure.get("run_id") if isinstance(closure.get("run_id"), str) else None)
+    status = view["chain_status"]
+    if status == "failed":
+        return _check(name, "failed", f"La cadena de la traza no verifica: prefijo válido de {view['valid_prefix_length']} evento(s).")
+    if status == "updating":
+        return _check(name, "limited", "La traza pertenece a una corrida aún abierta.")
+    if status == "limited":
+        return _check(name, "limited", f"La traza se muestra con limitaciones ({view['valid_prefix_length']} evento(s) verificados).")
+    return _check(name, "passed", f"Traza verificada con {view['valid_prefix_length']} evento(s).")
 
 
 def validate_archive(location: RunLocation, snapshot: Mapping[str, Any]) -> dict:
@@ -240,7 +245,8 @@ def validate_archive(location: RunLocation, snapshot: Mapping[str, Any]) -> dict
     checks.append(_validate_layout(closure))
     checks.append(_validate_identity(closure, review_raw))
     if isinstance(schema, int) and schema in _TRACE_ARCHIVE_SCHEMAS:
-        checks.append(_validate_trace(root, closure))
+        raw_trace = files.get("trazabilidad.jsonl", {}).get("raw")
+        checks.append(_validate_trace(root, closure, raw_trace if isinstance(raw_trace, bytes) else None))
     checks.extend(_validate_inventory(root, closure))
 
     if any(item["status"] == "failed" for item in checks):
