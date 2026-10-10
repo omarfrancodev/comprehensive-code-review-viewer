@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "comprehensive-code-review-viewer"
+version = "0.1.0"
+description = "Visor web local de solo lectura para revisiones de Comprehensive Code Review"
+readme = "README.md"
+requires-python = ">=3.10"
+# La licencia del proyecto sigue sin decidir por el propietario (spec 3); no se declara aquí.
+authors = [{ name = "omarfrancodev" }]
+keywords = ["code-review", "archive", "read-only", "viewer"]
+classifiers = [
+  "Environment :: Console",
+  "Environment :: Web Environment",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/omarfrancodev/comprehensive-code-review-viewer"
+
+[project.scripts]
+ccr-viewer = "ccr_viewer.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["ccr_viewer*"]
+
+[tool.setuptools.package-data]
+ccr_viewer = ["contracts/*.json", "web/*.html", "web/*.css", "web/*.js", "web/vendor/*"]
