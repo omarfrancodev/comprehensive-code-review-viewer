@@ -8,7 +8,10 @@ test.describe("ficha, hallazgos y validación", () => {
   });
 
   test("muestra la raíz configurada y la biblioteca", async ({ page }) => {
-    await expect(page.locator("#raiz")).toContainText("C:/archivo/sintetico");
+    await expect(page.locator("#raiz")).toContainText("sintetico");
+    await page.locator("#raiz").click();
+    await expect(page.getByRole("dialog", { name: "Contexto de raíz" })).toContainText("C:/archivo/sintetico");
+    await page.keyboard.press("Escape");
     await expect(page.locator("#biblioteca")).toContainText("pr 42");
     await expect(page.locator("#biblioteca")).toContainText("cerrada");
   });

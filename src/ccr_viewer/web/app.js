@@ -1,4 +1,7 @@
-/** Punto de entrada: sesión, biblioteca, pestañas de la revisión y avisos en vivo. */
+/**
+ * Punto de entrada: shell, sesión, biblioteca, pestañas de la revisión,
+ * navegación local (`?run&tab&event`), preferencias y avisos en vivo.
+ */
 
 import {
   bootstrapSession,
@@ -13,10 +16,13 @@ import { renderDocuments } from "./documents.js";
 import { renderLifecycle } from "./lifecycle.js";
 import { createPlayback } from "./playback.js";
 import { renderFindings, renderLibrary, renderProfile, renderValidation, renderHistory, renderArchive } from "./views.js";
-import { elemento } from "./dom.js";
+import { campo, elemento, listaDefinitiva } from "./dom.js";
+import { applyPrefs, loadPrefs, savePrefs } from "./prefs.js";
+import { buildRoute, parseRoute } from "./route.js";
+import { createTabs, mountShell } from "./shell.js";
 
 const PESTANAS = [
-  { id: "ficha", etiqueta: "Ficha", render: renderProfile },
+  { id: "ficha", etiqueta: "Resumen", render: renderProfile },
   { id: "hallazgos", etiqueta: "Hallazgos", render: renderFindings },
   { id: "validacion", etiqueta: "Validación", render: renderValidation },
   { id: "seguimiento", etiqueta: "Seguimiento", render: renderHistory },
@@ -24,6 +30,10 @@ const PESTANAS = [
   { id: "trazabilidad", etiqueta: "Trazabilidad", render: null },
   { id: "archivo", etiqueta: "Archivo", render: renderArchive },
 ];
+
+const AVISO_RUTA = "La dirección no corresponde a una revisión disponible; no se seleccionó ninguna.";
+const AVISO_HITO = "El hito indicado en la dirección no existe en esta traza; se conserva la selección disponible.";
+const AVISO_RESYNC = "La biblioteca se recargará para mostrar una versión coherente.";
 
 let repeticion = null;
 let ultimaTraza = null;
@@ -35,39 +45,97 @@ let revisionRequest = 0;
 let libraryRequest = 0;
 let disposeLifecycle = null;
 let renderedState = null;
-let connectionState = "connecting";
 
-const store = createStore();
-const bibliotecaNodo = document.getElementById("biblioteca");
-const revisionNodo = document.getElementById("revision");
-const raizNodo = document.getElementById("raiz");
-const barraNodo = document.getElementById("barra-revision");
-const avisosNodo = document.getElementById("avisos");
+// Navegación local: aviso visible de la ruta, clave cuya carga viene de la
+// URL o del historial, y bandera para no escribir historial al restaurarlo.
+let avisoRuta = null;
+let avisoHito = null;
+let rutaPendiente = null;
+let restaurando = false;
+let historialListo = false;
 
-function aplicarTema(tema) {
-  document.documentElement.dataset.theme = tema === "auto" ? "" : tema;
+const raizDocumento = document.documentElement;
+const shell = mountShell(document);
+const { library: bibliotecaNodo, content: revisionNodo, tabs: barraNodo } = shell.regions;
+const raizBoton = document.getElementById("raiz");
+const temaNodo = document.getElementById("tema");
+
+const store = createStore({ prefs: loadPrefs() });
+applyPrefs(raizDocumento, store.getState().prefs);
+if (temaNodo) temaNodo.value = store.getState().prefs.theme;
+
+const pestanas = createTabs(
+  barraNodo,
+  PESTANAS.map((pestana) => ({ id: pestana.id, label: pestana.etiqueta })),
+  { selected: store.getState().tab, controls: revisionNodo.id, onSelect: (tab) => store.dispatch({ type: "setTab", tab }) },
+);
+
+/** Ruta local del estado: solo revisión, pestaña e hito validados. */
+function rutaDe(estado) {
+  if (!estado.selectedRun) return "";
+  return buildRoute({ run: estado.selectedRun, tab: estado.tab, event: estado.selectedEventId });
 }
 
-function barraPestanas() {
-  barraNodo.replaceChildren();
-  if (!store.getState().selectedRun) return;
-  const lista = elemento("div", { clase: "pestanas", atributos: { role: "tablist" } });
-  for (const pestana of PESTANAS) {
-    const activa = store.getState().tab === pestana.id;
-    const boton = elemento("button", {
-      clase: activa ? "pestana pestana--activa" : "pestana",
-      atributos: {
-        type: "button",
-        role: "tab",
-        "aria-selected": activa ? "true" : "false",
-        "data-tab": pestana.id,
-      },
-      texto: pestana.etiqueta,
-    });
-    boton.addEventListener("click", () => store.dispatch({ type: "setTab", tab: pestana.id }));
-    lista.append(boton);
+/** Despacha sin escribir historial (ruta inicial, `popstate`, recuperación). */
+function sinHistorial(accion) {
+  const previo = restaurando;
+  restaurando = true;
+  try {
+    accion();
+  } finally {
+    restaurando = previo;
   }
-  barraNodo.append(lista);
+}
+
+function reemplazarRuta() {
+  history.replaceState(null, "", `${location.pathname}${rutaDe(store.getState())}`);
+}
+
+function avisarRuta() {
+  avisoRuta = AVISO_RUTA;
+  shell.announce(AVISO_RUTA);
+  if (!store.getState().selectedRun) dibujarRevision();
+}
+
+/** Acción `selectRun` para una ruta: un hito sin pestaña se abre en Trazabilidad. */
+function seleccionDeRuta(ruta) {
+  return {
+    type: "selectRun",
+    key: ruta.run,
+    tab: ruta.tab ?? (ruta.event ? "trazabilidad" : undefined),
+    eventId: ruta.event ?? undefined,
+  };
+}
+
+function sincronizarPestanas(estado) {
+  const hay = Boolean(estado.selectedRun);
+  barraNodo.hidden = !hay;
+  if (hay) {
+    revisionNodo.setAttribute("role", "tabpanel");
+    pestanas.setSelected(estado.tab);
+  } else {
+    revisionNodo.removeAttribute("role");
+    revisionNodo.removeAttribute("aria-labelledby");
+  }
+}
+
+/** Enlaza la reproducción con el hito del store sin reproducir nada. */
+function enlazarRepeticion(control) {
+  const objetivo = store.getState().selectedEventId;
+  if (objetivo) {
+    if (control.event(objetivo)) {
+      control.seek(objetivo);
+    } else {
+      avisoHito = AVISO_HITO;
+      shell.announce(AVISO_HITO);
+      sinHistorial(() => store.dispatch({ type: "selectEvent", eventId: null }));
+      reemplazarRuta();
+    }
+  }
+  control.subscribe((estado) => {
+    const id = estado.mode === "live" ? null : estado.selectedEventId;
+    if (id !== store.getState().selectedEventId) store.dispatch({ type: "selectEvent", eventId: id });
+  });
 }
 
 function dibujarRevision() {
@@ -81,9 +149,10 @@ function dibujarRevision() {
     repeticion = null;
     ultimaTraza = estado.selectedRun;
   }
-  barraPestanas();
+  sincronizarPestanas(estado);
   revisionNodo.replaceChildren();
   if (!estado.selectedRun) {
+    if (avisoRuta) revisionNodo.append(elemento("p", { clase: "estado estado--aviso", texto: avisoRuta }));
     revisionNodo.append(
       elemento("h2", { texto: "Selecciona una revisión" }),
       elemento("p", { clase: "estado", texto: "Las vistas de cada revisión aparecerán aquí." }),
@@ -127,10 +196,13 @@ function dibujarRevision() {
           ultimaTraza = estado.selectedRun;
           repeticion?.destroy();
           repeticion = createPlayback(traza.events ?? []);
+          enlazarRepeticion(repeticion);
         } else {
           repeticion.ingest(traza);
         }
         disposeLifecycle = renderLifecycle(revisionNodo, traza, repeticion);
+        if (avisoHito) revisionNodo.prepend(elemento("p", { clase: "estado estado--aviso", texto: avisoHito }));
+        avisoHito = null;
       })
       .catch((error) => {
         if (generation !== currentGeneration) return;
@@ -139,19 +211,6 @@ function dibujarRevision() {
         );
       });
   }
-}
-
-function dibujarAvisos(estado) {
-  avisosNodo.replaceChildren();
-  const label = { connecting: "Conectando seguimiento…", connected: "Seguimiento conectado", disconnected: "Seguimiento desconectado; intentando reconectar." }[connectionState];
-  avisosNodo.append(elemento("p", { clase: "estado", texto: label }));
-  if (!estado.resynced) return;
-  avisosNodo.append(
-    elemento("p", {
-      clase: "estado estado--aviso",
-      texto: "La biblioteca se recargará para mostrar una versión coherente.",
-    }),
-  );
 }
 
 async function cargarBiblioteca() {
@@ -174,29 +233,158 @@ async function cargarRevision(clave) {
   try {
     const vista = await getRun(clave);
     if (requestId !== revisionRequest || store.getState().selectedRun !== clave) return;
+    if (rutaPendiente === clave) rutaPendiente = null;
     store.dispatch({ type: "viewLoaded", view: vista });
   } catch (error) {
     if (requestId !== revisionRequest || store.getState().selectedRun !== clave) return;
+    if (rutaPendiente === clave) {
+      // Una clave de la URL que no existe: aviso y selección segura, sin
+      // buscar otra revisión parecida.
+      rutaPendiente = null;
+      avisarRuta();
+      sinHistorial(() => store.dispatch({ type: "selectRun", key: null }));
+      reemplazarRuta();
+      return;
+    }
     store.dispatch({ type: "setError", error: error.message });
   }
+}
+
+/** Último segmento de la raíz para la etiqueta compacta; el detalle muestra la ruta completa. */
+function nombreBase(ruta) {
+  const partes = String(ruta ?? "").split(/[\\/]+/).filter(Boolean);
+  return partes.at(-1) ?? String(ruta ?? "");
 }
 
 function dibujar() {
   const estado = store.getState();
   if (!renderedState || renderedState.library !== estado.library || renderedState.filters !== estado.filters || renderedState.selectedRun !== estado.selectedRun || renderedState.error !== estado.error) renderLibrary(bibliotecaNodo, estado, store.dispatch);
-  if (estado.config) {
-    raizNodo.textContent = `Raíz del archivo (${estado.config.selected_by}): ${estado.config.root}`;
+  if (estado.config && renderedState?.config !== estado.config) {
+    raizBoton.querySelector(".raiz-etiqueta").textContent = nombreBase(estado.config.root);
   }
   if (!renderedState || renderedState.view !== estado.view || renderedState.tab !== estado.tab || renderedState.selectedRun !== estado.selectedRun) dibujarRevision();
-  aplicarTema(estado.theme);
-  dibujarAvisos(estado);
+  shell.setRunSelected(estado.selectedRun, { enfocar: !restaurando });
+  shell.setConnection(estado.connection);
+  if (estado.resynced && !renderedState?.resynced) shell.announce(AVISO_RESYNC);
   renderedState = estado;
   // La selección y el desplazamiento se restauran tras cada redibujo.
   if (desplazamiento) window.scrollTo(0, desplazamiento);
 }
 
+/** Store → historial: `pushState` al cambiar revisión o pestaña, `replaceState` al cambiar de hito. */
+function suscribirHistorial() {
+  let previo = store.getState();
+  store.subscribe((estado) => {
+    const anterior = previo;
+    previo = estado;
+    if (!historialListo || restaurando) return;
+    const destino = rutaDe(estado);
+    if (destino === location.search) return;
+    const url = `${location.pathname}${destino}`;
+    if (anterior.selectedRun !== estado.selectedRun || anterior.tab !== estado.tab) history.pushState(null, "", url);
+    else history.replaceState(null, "", url);
+  });
+}
+
+/** Store → reproducción: un hito restaurado se selecciona sin reproducir. */
+function suscribirHito() {
+  store.subscribe((estado) => {
+    const id = estado.selectedEventId;
+    if (!id || !repeticion || ultimaTraza !== estado.selectedRun) return;
+    if (repeticion.state().selectedEventId !== id && repeticion.event(id)) repeticion.seek(id);
+  });
+}
+
+function suscribirPreferencias() {
+  let previas = store.getState().prefs;
+  store.subscribe((estado) => {
+    if (estado.prefs === previas) return;
+    previas = estado.prefs;
+    applyPrefs(raizDocumento, estado.prefs);
+    savePrefs(estado.prefs);
+    if (temaNodo && temaNodo.value !== estado.prefs.theme) temaNodo.value = estado.prefs.theme;
+  });
+}
+
+function aplicarRutaInicial() {
+  const ruta = parseRoute(location.search);
+  if (new URLSearchParams(location.search).has("run") && !ruta.run) avisarRuta();
+  if (ruta.run) {
+    rutaPendiente = ruta.run;
+    sinHistorial(() => store.dispatch(seleccionDeRuta(ruta)));
+  }
+  reemplazarRuta();
+  historialListo = true;
+}
+
+window.addEventListener("popstate", () => {
+  if (!historialListo) return;
+  if (repeticion?.state().mode === "playing") repeticion.pause();
+  const ruta = parseRoute(location.search);
+  const estado = store.getState();
+  sinHistorial(() => {
+    if (ruta.run !== estado.selectedRun) {
+      rutaPendiente = ruta.run;
+      store.dispatch(seleccionDeRuta(ruta));
+    } else if (ruta.run) {
+      store.dispatch({ type: "setTab", tab: ruta.tab ?? "ficha" });
+      store.dispatch({ type: "selectEvent", eventId: ruta.event });
+    }
+  });
+});
+
+/** Selector de una preferencia dentro del diálogo; cada cambio se aplica y guarda. */
+function selectorPreferencia(id, etiqueta, clave, opciones) {
+  const bloque = elemento("div", { clase: "preferencia" });
+  const selector = elemento("select", { atributos: { id } });
+  for (const [valor, texto] of opciones) selector.append(elemento("option", { atributos: { value: valor }, texto }));
+  selector.value = store.getState().prefs[clave];
+  selector.addEventListener("change", () => store.dispatch({ type: "setPrefs", prefs: { [clave]: selector.value } }));
+  bloque.append(elemento("label", { texto: etiqueta, atributos: { for: id } }), selector);
+  return bloque;
+}
+
+document.getElementById("preferencias")?.addEventListener("click", () => {
+  shell.openDialog({
+    title: "Preferencias",
+    build(cuerpo) {
+      cuerpo.append(
+        selectorPreferencia("preferencia-densidad", "Densidad", "density", [["comfortable", "Cómoda"], ["compact", "Compacta"]]),
+        selectorPreferencia("preferencia-movimiento", "Movimiento", "motion", [["system", "Según el sistema"], ["reduce", "Reducido"]]),
+        elemento("p", { clase: "nota", texto: "Tema, densidad y movimiento se guardan solo en este navegador." }),
+      );
+    },
+  });
+});
+
+raizBoton?.addEventListener("click", () => {
+  shell.openDialog({
+    title: "Contexto de raíz",
+    build(cuerpo) {
+      const config = store.getState().config;
+      if (!config) {
+        cuerpo.append(elemento("p", { clase: "estado", texto: "La configuración de la raíz todavía no está disponible." }));
+        return;
+      }
+      cuerpo.append(
+        listaDefinitiva([
+          campo("Ruta completa", elemento("code", { clase: "ruta-completa", texto: config.root })),
+          campo("Seleccionada por", config.selected_by),
+          campo("Versión del visor", config.package_version),
+        ]),
+        elemento("p", { clase: "nota", texto: "El visor solo lee esta raíz; no modifica sus archivos." }),
+      );
+    },
+  });
+});
+
+temaNodo?.addEventListener("change", () => store.dispatch({ type: "setPrefs", prefs: { theme: temaNodo.value } }));
+
 async function iniciar() {
   store.subscribe(dibujar);
+  suscribirHistorial();
+  suscribirHito();
+  suscribirPreferencias();
   let previousFilters = store.getState().filters;
   let previousOffset = store.getState().offset;
   let previousKey = store.getState().selectedRun;
@@ -204,6 +392,7 @@ async function iniciar() {
     if (estado.selectedRun !== previousKey) {
       previousKey = estado.selectedRun;
       desplazamiento = 0;
+      if (previousKey) avisoRuta = null;
       void cargarRevision(previousKey);
     }
     if (estado.filters !== previousFilters || estado.offset !== previousOffset) {
@@ -223,6 +412,7 @@ async function iniciar() {
   } catch (error) {
     store.dispatch({ type: "setError", error: error.message });
   }
+  aplicarRutaInicial();
   await cargarBiblioteca();
 
   const unsubscribe = subscribeNotices(
@@ -234,7 +424,7 @@ async function iniciar() {
       }
       if (key && (!notice.run_key || notice.run_key === key)) void cargarRevision(key);
     },
-    state => { connectionState = state; dibujarAvisos(store.getState()); },
+    (state) => store.dispatch({ type: "setConnection", state }),
   );
   window.addEventListener("pagehide", () => { unsubscribe(); repeticion?.destroy(); disposeLifecycle?.(); }, { once: true });
 
@@ -243,12 +433,6 @@ async function iniciar() {
 
 window.addEventListener("scroll", () => {
   desplazamiento = window.scrollY;
-});
-
-document.getElementById("tema")?.addEventListener("change", event => store.dispatch({ type: "setTheme", theme: event.target.value }));
-document.getElementById("abrir-biblioteca")?.addEventListener("click", event => {
-  const open = document.body.classList.toggle("biblioteca-abierta");
-  event.currentTarget.setAttribute("aria-expanded", String(open));
 });
 
 iniciar();

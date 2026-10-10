@@ -44,6 +44,7 @@ CONTENT_SECURITY_POLICY = (
 #: Lista finita de recursos empaquetados que el servidor puede publicar.
 STATIC_RESOURCES = {
     "index.html": "text/html; charset=utf-8",
+    "tokens.css": "text/css; charset=utf-8",
     "styles.css": "text/css; charset=utf-8",
     "app.js": "text/javascript; charset=utf-8",
     "api.js": "text/javascript; charset=utf-8",
@@ -61,6 +62,8 @@ STATIC_RESOURCES = {
     "prefs.js": "text/javascript; charset=utf-8",
     "present.js": "text/javascript; charset=utf-8",
     "route.js": "text/javascript; charset=utf-8",
+    "shell.js": "text/javascript; charset=utf-8",
+    "icons.js": "text/javascript; charset=utf-8",
     "vendor/marked.esm.js": "text/javascript; charset=utf-8",
     "vendor/purify.es.mjs": "text/javascript; charset=utf-8",
     "vendor/manifest.json": "application/json; charset=utf-8",

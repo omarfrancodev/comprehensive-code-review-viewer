@@ -222,8 +222,12 @@ const CONFIG = {
 /**
  * Intercepta las rutas de la API con respuestas sintéticas y abre la aplicación.
  * La política de seguridad del servidor no se relaja en ningún momento.
+ *
+ * `opciones` admite el nombre de variante (forma histórica) o un objeto con
+ * `ruta`: la dirección local con su `?run&tab&event` antes del fragmento.
  */
-export async function openFixture(page, variant = "final_v7") {
+export async function openFixture(page, opciones = {}) {
+  const { variant = "final_v7", ruta = "/" } = typeof opciones === "string" ? { variant: opciones } : opciones;
   const envoltura = (data) => ({ status: 200, contentType: "application/json", body: JSON.stringify(data) });
 
   await page.route("**/api/config", (ruta) => ruta.fulfill(envoltura(CONFIG)));
@@ -272,7 +276,7 @@ export async function openFixture(page, variant = "final_v7") {
     }),
   );
 
-  await page.goto("/#token=token-sintetico");
+  await page.goto(`${ruta}#token=token-sintetico`);
   await page.waitForSelector("#biblioteca .lista-revisiones button", { timeout: 15_000 });
   return { variant };
 }

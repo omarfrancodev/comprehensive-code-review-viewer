@@ -96,6 +96,69 @@ describe("createStore", () => {
   });
 });
 
+describe("shell: preferencias, selección y conexión", () => {
+  it("el estado inicial no conserva `theme` y parte de preferencias por omisión", () => {
+    const state = createStore().getState();
+    assert.equal("theme" in state, false);
+    assert.deepEqual(state.prefs, { theme: "system", density: "comfortable", motion: "system" });
+    assert.equal(state.selectedEventId, null);
+    assert.equal(state.connection, "connecting");
+  });
+
+  it("setPrefs actualiza prefs", () => {
+    const store = createStore();
+    store.dispatch({ type: "setPrefs", prefs: { theme: "dark", density: "compact", motion: "reduce" } });
+    assert.deepEqual(store.getState().prefs, { theme: "dark", density: "compact", motion: "reduce" });
+  });
+
+  it("selectRun reinicia selectedEventId y tab a «ficha»", () => {
+    const store = createStore({ selectedRun: "a", tab: "hallazgos", selectedEventId: "E000002" });
+    store.dispatch({ type: "selectRun", key: "b" });
+    const state = store.getState();
+    assert.equal(state.selectedRun, "b");
+    assert.equal(state.tab, "ficha");
+    assert.equal(state.selectedEventId, null);
+    assert.equal(state.view, null);
+  });
+
+  it("selectRun respeta una pestaña y un hito explícitos", () => {
+    const store = createStore({ selectedRun: "a", tab: "ficha" });
+    store.dispatch({ type: "selectRun", key: "b", tab: "trazabilidad", eventId: "E000003" });
+    assert.equal(store.getState().tab, "trazabilidad");
+    assert.equal(store.getState().selectedEventId, "E000003");
+  });
+
+  it("selectRun ignora una pestaña fuera del vocabulario", () => {
+    const store = createStore({ selectedRun: "a" });
+    store.dispatch({ type: "selectRun", key: "b", tab: "inventada" });
+    assert.equal(store.getState().tab, "ficha");
+  });
+
+  it("selectEvent guarda el ID", () => {
+    const store = createStore({ selectedRun: "a" });
+    store.dispatch({ type: "selectEvent", eventId: "E000001" });
+    assert.equal(store.getState().selectedEventId, "E000001");
+    store.dispatch({ type: "selectEvent", eventId: null });
+    assert.equal(store.getState().selectedEventId, null);
+  });
+
+  it("setTab conserva el hito seleccionado de la corrida", () => {
+    const store = createStore({ selectedRun: "a", selectedEventId: "E000002" });
+    store.dispatch({ type: "setTab", tab: "hallazgos" });
+    assert.equal(store.getState().selectedEventId, "E000002");
+  });
+
+  it("setConnection registra solo estados conocidos", () => {
+    const store = createStore();
+    store.dispatch({ type: "setConnection", state: "connected" });
+    assert.equal(store.getState().connection, "connected");
+    store.dispatch({ type: "setConnection", state: "disconnected" });
+    assert.equal(store.getState().connection, "disconnected");
+    store.dispatch({ type: "setConnection", state: "inventado" });
+    assert.equal(store.getState().connection, "disconnected");
+  });
+});
+
 describe("reduce", () => {
   it("acumula los avisos nuevos sin duplicar por cursor", () => {
     let state = reduce({ newEventCount: 0 }, { type: "notice", notice: { kind: "run_changed" } });

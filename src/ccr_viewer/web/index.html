@@ -4,24 +4,44 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Visor de revisiones — Comprehensive Code Review</title>
+    <link rel="stylesheet" href="/assets/tokens.css" />
     <link rel="stylesheet" href="/assets/styles.css" />
   </head>
-  <body class="biblioteca-abierta">
+  <body>
     <a class="saltar" href="#contenido">Saltar al contenido</a>
     <header class="cabecera">
-      <h1>Visor de revisiones</h1>
-      <p id="raiz" class="raiz">Cargando la raíz del archivo…</p>
-      <label>Tema <select id="tema"><option value="auto">Sistema</option><option value="light">Claro</option><option value="dark">Oscuro</option></select></label>
-      <button id="abrir-biblioteca" type="button" aria-controls="biblioteca" aria-expanded="true">Biblioteca</button>
+      <h1 class="cabecera-titulo">Visor de revisiones</h1>
+      <button id="raiz" class="raiz" type="button" aria-haspopup="dialog">
+        <span class="solo-lectores">Contexto de raíz: </span><span class="raiz-etiqueta">Cargando la raíz…</span>
+      </button>
+      <p id="avisos" class="conexion" data-estado="connecting"><span class="conexion-texto">Conectando…</span></p>
+      <div class="cabecera-acciones">
+        <label class="campo-tema"><span class="campo-tema-etiqueta">Tema</span>
+          <select id="tema">
+            <option value="system">Sistema</option>
+            <option value="light">Claro</option>
+            <option value="dark">Oscuro</option>
+          </select>
+        </label>
+        <button id="preferencias" class="boton-icono" type="button" aria-haspopup="dialog"><span class="solo-lectores">Preferencias</span></button>
+        <button id="abrir-biblioteca" class="boton-biblioteca" type="button" aria-controls="panel-biblioteca" aria-expanded="true"><span>Biblioteca</span></button>
+      </div>
     </header>
-    <p id="avisos" class="avisos" role="status" aria-live="polite"></p>
-    <main id="contenido" class="principal">
-      <aside id="biblioteca" class="biblioteca" aria-label="Biblioteca de revisiones"></aside>
-      <section class="detalle">
-        <div id="barra-revision" class="barra-revision"></div>
-        <div id="revision" class="revision" aria-live="polite"></div>
-      </section>
-    </main>
+    <div class="shell">
+      <aside id="panel-biblioteca" class="region-biblioteca" aria-label="Biblioteca de revisiones">
+        <div class="biblioteca-retorno">
+          <button id="volver-revision" type="button"><span>Volver a la revisión</span></button>
+        </div>
+        <div id="biblioteca" class="biblioteca"></div>
+      </aside>
+      <main id="contenido" class="region-contenido" tabindex="-1">
+        <div id="cabecera-revision" class="cabecera-revision"></div>
+        <div id="barra-revision" class="barra-revision" aria-label="Vistas de la revisión" hidden></div>
+        <section id="revision" class="panel-revision"></section>
+      </main>
+      <aside id="inspector" class="region-inspector" aria-label="Inspector" hidden></aside>
+    </div>
+    <div id="anunciador" class="solo-lectores" role="status" aria-live="polite" aria-atomic="true"></div>
     <script type="module" src="/assets/app.js"></script>
   </body>
 </html>

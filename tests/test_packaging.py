@@ -58,7 +58,8 @@ class WheelContentTests(unittest.TestCase):
         for recurso in ("index.html", "styles.css", "app.js", "api.js", "store.js",
                         "library.js", "profile.js", "findings.js", "validation.js",
                         "documents.js", "markdown.js", "lifecycle.js", "playback.js",
-                        "prefs.js", "present.js", "route.js"):
+                        "prefs.js", "present.js", "route.js", "tokens.css",
+                        "shell.js", "icons.js"):
             with self.subTest(recurso=recurso):
                 self.assertIn(f"ccr_viewer/web/{recurso}", self.nombres)
 

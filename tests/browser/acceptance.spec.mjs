@@ -25,9 +25,14 @@ test.beforeEach(async ({ page }) => {
 
 test("establece la sesión con el token del fragmento", async ({ page }) => {
   // En Windows la ruta temporal puede aparecer con su alias corto (8.3): se
-  // compara el nombre del directorio, que es estable en ambos casos.
+  // compara el nombre del directorio, que es estable en ambos casos. La
+  // cabecera muestra la etiqueta compacta; el diálogo, la ruta completa.
   await expect(page.locator("#raiz")).toContainText("archivo");
-  await expect(page.locator("#raiz")).toContainText("(explicit)");
+  await page.locator("#raiz").click();
+  const contexto = page.getByRole("dialog", { name: "Contexto de raíz" });
+  await expect(contexto).toContainText("archivo");
+  await expect(contexto).toContainText("explicit");
+  await page.keyboard.press("Escape");
   // El fragmento se limpia tras el canje.
   await expect(page).toHaveURL(/\/$/);
   expect(page.url()).not.toContain("token");

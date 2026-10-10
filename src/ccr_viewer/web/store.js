@@ -2,8 +2,11 @@
  * Estado transitorio de la aplicación.
  *
  * El contenido del archivo nunca pasa por aquí como instrucciones: sólo se
- * guardan la selección, la pestaña activa y los avisos pendientes de recarga.
+ * guardan la selección, la pestaña activa, el hito seleccionado, las
+ * preferencias de presentación, el estado de conexión y los avisos pendientes.
  */
+
+import { ROUTE_TABS } from "./route.js";
 
 const PRIORIDADES = ["P0", "P1", "P2", "P3"];
 
@@ -51,8 +54,12 @@ export const ESTADO_INICIAL = {
   error: null,
   newEventCount: 0,
   resynced: false,
-  theme: "auto",
+  prefs: { theme: "system", density: "comfortable", motion: "system" },
+  selectedEventId: null,
+  connection: "connecting",
 };
+
+const CONEXIONES = ["connecting", "connected", "disconnected"];
 
 /** Reductor puro: cada acción devuelve un estado nuevo. */
 export function reduce(state, action) {
@@ -67,9 +74,20 @@ export function reduce(state, action) {
         loading: false,
         error: null,
       };
-    case "selectRun":
-      if (action.key === state.selectedRun) return state;
-      return { ...state, selectedRun: action.key, tab: "ficha", view: null, scrollTop: 0 };
+    case "selectRun": {
+      const tab = ROUTE_TABS.includes(action.tab) ? action.tab : null;
+      const eventId = typeof action.eventId === "string" ? action.eventId : null;
+      if (action.key === state.selectedRun) {
+        // Misma revisión: solo se aplican la pestaña y el hito explícitos.
+        const siguiente = { ...state, tab: tab ?? state.tab, selectedEventId: action.eventId === undefined ? state.selectedEventId : eventId };
+        return siguiente.tab === state.tab && siguiente.selectedEventId === state.selectedEventId ? state : siguiente;
+      }
+      return { ...state, selectedRun: action.key ?? null, tab: tab ?? "ficha", selectedEventId: eventId, view: null, scrollTop: 0 };
+    }
+    case "selectEvent": {
+      const eventId = typeof action.eventId === "string" ? action.eventId : null;
+      return state.selectedEventId === eventId ? state : { ...state, selectedEventId: eventId };
+    }
     case "viewLoaded":
       return { ...state, view: action.view, loading: false, error: null };
     case "setTab":
@@ -98,8 +116,12 @@ export function reduce(state, action) {
       return { ...state, loading: true };
     case "clearNewEvents":
       return { ...state, newEventCount: 0 };
-    case "setTheme":
-      return { ...state, theme: action.theme };
+    case "setPrefs":
+      return { ...state, prefs: { ...state.prefs, ...action.prefs } };
+    case "setConnection":
+      return CONEXIONES.includes(action.state) && action.state !== state.connection
+        ? { ...state, connection: action.state }
+        : state;
     default:
       return state;
   }
