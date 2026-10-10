@@ -21,6 +21,23 @@ También funciona como módulo, con el mismo punto de entrada:
 python -m ccr_viewer
 ```
 
+Si pip avisa que `ccr-viewer.exe` se instaló en un directorio que no está en
+`PATH`, la instalación sí terminó. Puedes usar `python -m ccr_viewer` con el
+mismo intérprete que usaste para instalar. Para disponer del comando directamente,
+instala en un entorno virtual activado o añade a tu `PATH` el directorio `Scripts`
+que indica pip; no es necesario modificar `PATH` para ejecutar el módulo.
+
+La [release v0.1.0](https://github.com/omarfrancodev/comprehensive-code-review-viewer/releases/tag/v0.1.0)
+incluye una wheel descargable. Desde el directorio donde la descargaste:
+
+```bash
+python -m pip install comprehensive_code_review_viewer-0.1.0-py3-none-any.whl
+python -m ccr_viewer
+```
+
+Consulta [CHANGELOG.md](CHANGELOG.md) para conocer las capacidades y límites de
+cada versión publicada.
+
 Opciones: `--root PATH`, `--port N`, `--no-browser` y `--version`. La raíz se
 selecciona con `--root`, luego `CCR_ARTIFACTS_DIR`, y por último
 `~/.comprehensive-code-review/reviews`. Consulta [docs/usage.md](docs/usage.md).
@@ -59,9 +76,10 @@ y en [contracts/sources.md](contracts/sources.md).
 La implementación cuenta con pruebas de backend, interfaz, navegador y
 empaquetado. Las correcciones y la evidencia de la validación se documentan en
 [el informe de implementación](docs/superpowers/reviews/2026-10-10-implementation-verification.md).
-La rama se presenta mediante PR para revisión del propietario. La fusión y la
-publicación requieren su autorización; la licencia del proyecto sigue pendiente
-de decisión antes de una distribución pública.
+La versión 0.1.0 conserva la interfaz inicial. Hay mejoras pendientes de densidad,
+jerarquía visual, presentación de identificadores largos y exploración de la
+trazabilidad. La publicación actual permite probar esa base; el rediseño se
+documenta y revisa por separado.
 
 ## Proyecto relacionado
 
