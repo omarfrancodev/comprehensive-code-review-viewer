@@ -128,6 +128,65 @@ export const INFORME_SINTETICO = [
   "[notas locales](evidence/notes.json)",
 ].join("\n");
 
+/** Traza sintética: E000003 tiene hora de ocurrencia anterior a E000001. */
+export const TRAZA_SINTETICA = {
+  events: [
+    {
+      event_id: "E000001",
+      sequence: 1,
+      kind: "prepare",
+      status: "completed",
+      summary: "Archivo sintético preparado",
+      occurred_at: null,
+      recorded_at: "2026-09-01T12:00:00+00:00",
+      temporal_basis: "recording_fallback",
+      temporal_at: "2026-09-01T12:00:00+00:00",
+      provenance: { kind: "helper", source: null },
+      recorder: { kind: "helper", name: "review_artifacts", provider_id: null },
+      actor: { kind: "helper", name: "review_artifacts", provider_id: null },
+      executor: null,
+    },
+    {
+      event_id: "E000002",
+      sequence: 2,
+      kind: "discovery",
+      status: "started",
+      summary: "Descubrimiento estático iniciado",
+      occurred_at: "2026-09-01T12:00:05+00:00",
+      recorded_at: "2026-09-01T12:00:09+00:00",
+      temporal_basis: "observed_occurrence",
+      temporal_at: "2026-09-01T12:00:05+00:00",
+      provenance: { kind: "helper", source: "review_artifacts:record-event" },
+      recorder: { kind: "helper", name: "review_artifacts", provider_id: null },
+      actor: { kind: "coordinator", name: "coordinator", provider_id: null },
+      executor: null,
+    },
+    {
+      event_id: "E000003",
+      sequence: 3,
+      kind: "check",
+      status: "passed",
+      summary: "Comprobación sintética superada",
+      occurred_at: "2026-09-01T11:00:00+00:00",
+      recorded_at: "2026-09-01T12:00:12+00:00",
+      temporal_basis: "observed_occurrence",
+      temporal_at: "2026-09-01T11:00:00+00:00",
+      provenance: { kind: "tool", source: "review_runner:evidence/run.json" },
+      recorder: { kind: "helper", name: "review_artifacts", provider_id: null },
+      actor: { kind: "coordinator", name: "coordinator", provider_id: null },
+      executor: { name: "ejecutor-1", provider_id: null },
+    },
+  ],
+  valid_prefix_length: 3,
+  chain_status: "verified",
+  temporal_order: ["E000003", "E000002", "E000001"],
+  relations: [
+    { event_id: "E000002", relation: "follows", target: "E000001", status: "resolved" },
+    { event_id: "E000003", relation: "depends_on", target: "E000009", status: "dangling" },
+  ],
+  diagnostics: [],
+};
+
 const ARCHIVOS = [
   {
     key: "1".repeat(32),
@@ -170,23 +229,8 @@ export async function openFixture(page, variant = "final_v7") {
   await page.route("**/api/config", (ruta) => ruta.fulfill(envoltura(CONFIG)));
   await page.route("**/api/runs?*", (ruta) => ruta.fulfill(envoltura(BIBLIOTECA)));
   await page.route("**/api/runs", (ruta) => ruta.fulfill(envoltura(BIBLIOTECA)));
-  await page.route(
-    "**/api/runs/*/trace",
-    (ruta) =>
-      ruta.fulfill(
-        envoltura({
-          api_version: 1,
-          data: {
-            events: [],
-            valid_prefix_length: 0,
-            chain_status: "verified",
-            temporal_order: [],
-            relations: [],
-            diagnostics: [],
-          },
-        }),
-      ),
-  );
+  // La ruta de traza no se intercepta aquí: cada prueba declara la suya, porque
+  // Playwright da prioridad a la última ruta registrada.
   await page.route("**/api/runs/*/files", (ruta) =>
     ruta.fulfill(envoltura({ api_version: 1, data: ARCHIVOS, diagnostics: [] })),
   );
