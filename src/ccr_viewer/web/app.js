@@ -24,7 +24,7 @@ import {
   renderRunHeader,
   renderValidation,
 } from "./views.js";
-import { campo, elemento, listaDefinitiva } from "./dom.js";
+import { campo, capturarInterfaz, elemento, listaDefinitiva, restaurarInterfaz } from "./dom.js";
 import { applyPrefs, loadPrefs, savePrefs } from "./prefs.js";
 import { buildRoute, parseRoute } from "./route.js";
 import { createTabs, mountShell } from "./shell.js";
@@ -59,6 +59,9 @@ let cabeceraVista = null;
 // Estado local de Hallazgos, Validación y Documentos (filtros y selección): se
 // conserva entre recargas en vivo de la misma revisión y se descarta al cambiar.
 let memoriaVistas = { clave: null };
+// Última revisión, pestaña y vista dibujadas: una recarga es la misma revisión
+// y pestaña con una vista nueva (y solo entonces se restaura la interfaz).
+let ultimoDibujo = null;
 
 // Navegación local: aviso visible de la ruta, clave cuya carga viene de la
 // URL o del historial, y bandera para no escribir historial al restaurarlo.
@@ -193,7 +196,20 @@ function dibujarRevision() {
   }
   sincronizarPestanas(estado);
   dibujarCabecera(estado.selectedRun ? estado.view : null);
-  revisionNodo.replaceChildren();
+  // Recarga en vivo: foco, caret, scroll y `<details>` abiertos se capturan
+  // antes de reemplazar el panel y se restauran sobre el DOM nuevo. Un cambio
+  // de revisión o de pestaña nunca restaura nada.
+  const previo = ultimoDibujo;
+  ultimoDibujo = { run: estado.selectedRun, tab: estado.tab, view: estado.view };
+  const recarga = Boolean(
+    previo && estado.selectedRun && estado.view && previo.view
+    && previo.run === estado.selectedRun && previo.tab === estado.tab && previo.view !== estado.view,
+  );
+  const instantanea = recarga ? capturarInterfaz(revisionNodo) : null;
+  const restaurar = () => restaurarInterfaz(revisionNodo, instantanea);
+  // Documentos conserva el DOM anterior hasta que el nuevo está listo.
+  const conservar = recarga && estado.tab === "documentos";
+  if (!conservar) revisionNodo.replaceChildren();
   if (!estado.selectedRun) {
     if (avisoRuta) revisionNodo.append(elemento("p", { clase: "estado estado--aviso", texto: avisoRuta }));
     revisionNodo.append(
@@ -214,6 +230,7 @@ function dibujarRevision() {
   if (actual.render && actual.id !== "archivo" && estado.view.diagnostics?.some(item => item.code === "adapter.invalid_shape")) {
     renderArchive(revisionNodo, estado.view);
     revisionNodo.prepend(elemento("p", { clase: "estado estado--aviso", texto: "La metadata contiene tipos no admitidos; consulta los diagnósticos y el JSON original." }));
+    restaurar();
   } else if (actual.render) {
     try {
       actual.render(revisionNodo, estado.view, store.dispatch, { target: estado.target, memoria: memoriaDe(estado.selectedRun) });
@@ -221,12 +238,15 @@ function dibujarRevision() {
       renderArchive(revisionNodo, estado.view);
       revisionNodo.prepend(elemento("p", { clase: "estado estado--aviso", texto: "No se pudo representar la metadata de esta vista; el JSON original sigue disponible." }));
     }
+    restaurar();
   } else if (actual.id === "documentos") {
     // Los documentos cargan su inventario bajo demanda.
-    revisionNodo.append(elemento("p", { clase: "estado", texto: "Cargando documentos…" }));
+    if (!conservar) revisionNodo.append(elemento("p", { clase: "estado", texto: "Cargando documentos…" }));
     const panel = elemento("div");
     void renderDocuments(panel, estado.view, undefined, { memoria: memoriaDe(estado.selectedRun) }).then(() => {
-      if (generation === currentGeneration) revisionNodo.replaceChildren(panel);
+      if (generation !== currentGeneration) return;
+      revisionNodo.replaceChildren(panel);
+      restaurar();
     }).catch((error) => {
       if (generation !== currentGeneration) return;
       revisionNodo.replaceChildren(
@@ -250,6 +270,7 @@ function dibujarRevision() {
         disposeLifecycle = renderLifecycle(revisionNodo, traza, repeticion);
         if (avisoHito) revisionNodo.prepend(elemento("p", { clase: "estado estado--aviso", texto: avisoHito }));
         avisoHito = null;
+        restaurar();
       })
       .catch((error) => {
         if (generation !== currentGeneration) return;

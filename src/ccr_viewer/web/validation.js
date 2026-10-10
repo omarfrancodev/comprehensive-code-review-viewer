@@ -40,7 +40,7 @@ function bloque(valor, clase) {
 function fila(check, activa) {
   const boton = elemento("button", {
     clase: "fila-comprobacion",
-    atributos: { type: "button", "aria-pressed": String(activa) },
+    atributos: { type: "button", "aria-pressed": String(activa), "data-clave": idDe(check) },
   });
   const meta = elemento("span", { clase: "fila-meta" });
   meta.append(valorLegible(check.status, ESTADOS_COMPROBACION, { vacio: "Sin estado declarado" }));

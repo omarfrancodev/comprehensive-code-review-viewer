@@ -610,3 +610,190 @@ test.describe("Documentos", () => {
     }
   });
 });
+
+// --- Recarga en vivo: foco, caret, scroll y detalles abiertos (§11) ---------
+
+test.describe("Recarga en vivo de la misma revisión", () => {
+  const instalarAvisos = (page) =>
+    page.addInitScript(() => {
+      window.EventSource = class {
+        addEventListener(tipo, devolucion) {
+          if (tipo === "notice") window.entregarAviso = (aviso) => devolucion({ data: JSON.stringify(aviso) });
+        }
+        close() {}
+      };
+    });
+  let cursor = 1;
+  const avisar = (page) =>
+    page.evaluate(
+      ([clave, n]) => window.entregarAviso({ kind: "run_changed", run_key: clave, cursor: n }),
+      [CLAVE, ++cursor],
+    );
+  const marcar = (locator) => locator.evaluate((nodo) => { nodo.dataset.anterior = "1"; });
+  const activo = (page) =>
+    page.evaluate(() => ({
+      etiqueta: document.activeElement?.tagName,
+      filtro: document.activeElement?.dataset?.filtro ?? null,
+      clave: document.activeElement?.dataset?.clave ?? null,
+      anterior: document.activeElement?.dataset?.anterior ?? null,
+    }));
+  const muchos = (n) =>
+    conCambios((v) => {
+      v.review.findings = Array.from({ length: n }, (_, i) => ({
+        ...structuredClone(SEGUNDO_HALLAZGO),
+        id: `F${String(i + 1).padStart(3, "0")}`,
+        title: `Hallazgo número ${i + 1}`,
+      }));
+    });
+
+  test("el cuadro de búsqueda conserva foco, valor y caret y sigue recibiendo teclas", async ({ page }) => {
+    await instalarAvisos(page);
+    await abrir(page, conDosHallazgos());
+    await pestana(page, "Hallazgos").click();
+    const buscar = panel(page).locator('[data-filtro="texto"]');
+    await buscar.fill("caché");
+    await buscar.evaluate((nodo) => {
+      nodo.focus();
+      nodo.setSelectionRange(2, 3);
+      nodo.dataset.anterior = "1";
+    });
+    await avisar(page);
+    const nuevo = panel(page).locator('[data-filtro="texto"]:not([data-anterior])');
+    await expect(nuevo).toHaveCount(1);
+    await expect(nuevo).toBeFocused();
+    await expect(nuevo).toHaveValue("caché");
+    expect(await nuevo.evaluate((nodo) => [nodo.selectionStart, nodo.selectionEnd])).toEqual([2, 3]);
+    await page.keyboard.type("X");
+    await expect(nuevo).toHaveValue("caXhé");
+  });
+
+  test("una fila enfocada sigue enfocada tras la recarga", async ({ page }) => {
+    await instalarAvisos(page);
+    await abrir(page, conDosHallazgos());
+    await pestana(page, "Hallazgos").click();
+    const fila = panel(page).locator('.fila-hallazgo[data-clave="F002"]');
+    await fila.focus();
+    await marcar(fila);
+    await avisar(page);
+    await expect(panel(page).locator('.fila-hallazgo[data-clave="F002"]:not([data-anterior])')).toHaveCount(1);
+    expect(await activo(page)).toMatchObject({ etiqueta: "BUTTON", clave: "F002", anterior: null });
+  });
+
+  test("no roba el foco si estaba fuera del panel ni lo restaura si el elemento ya no existe", async ({ page }) => {
+    await instalarAvisos(page);
+    await abrir(page, conDosHallazgos());
+    await pestana(page, "Hallazgos").click();
+    // Foco en una pestaña: fuera del panel, no se mueve.
+    await pestana(page, "Hallazgos").focus();
+    await marcar(panel(page).locator(".lista-densa"));
+    await avisar(page);
+    await expect(panel(page).locator(".lista-densa:not([data-anterior])")).toHaveCount(1);
+    await expect(pestana(page, "Hallazgos")).toBeFocused();
+
+    // El elemento enfocado desaparece de la nueva vista: el foco no se inventa.
+    const fila = panel(page).locator('.fila-hallazgo[data-clave="F002"]');
+    await fila.focus();
+    await marcar(fila);
+    const sinSegundo = conCambios((v) => { v.review.findings = [v.review.findings[0]]; });
+    await page.route(`**/api/runs/${CLAVE}`, (ruta) => responder(ruta, sinSegundo));
+    await avisar(page);
+    await expect(filasHallazgo(page)).toHaveCount(1);
+    expect(await activo(page)).toMatchObject({ etiqueta: "BODY" });
+  });
+
+  test("el scroll de la lista de hallazgos se conserva", async ({ page }) => {
+    await instalarAvisos(page);
+    await abrir(page, muchos(40));
+    await pestana(page, "Hallazgos").click();
+    const lista = panel(page).locator(".lista-densa");
+    await expect(filasHallazgo(page)).toHaveCount(40);
+    const antes = await lista.evaluate((nodo) => {
+      nodo.scrollTop = 240;
+      nodo.dataset.anterior = "1";
+      return nodo.scrollTop;
+    });
+    expect(antes).toBeGreaterThan(0);
+    await avisar(page);
+    const nueva = panel(page).locator(".lista-densa:not([data-anterior])");
+    await expect(nueva).toHaveCount(1);
+    expect(await nueva.evaluate((nodo) => nodo.scrollTop)).toBe(antes);
+  });
+
+  test("un details abierto sigue abierto tras la recarga", async ({ page }) => {
+    await instalarAvisos(page);
+    await abrir(page, conCambios((v) => { v.review.campo_futuro = { activo: true }; }));
+    const originales = panel(page).locator("details.campos-originales");
+    await originales.locator("summary").click();
+    await expect(originales).toHaveJSProperty("open", true);
+    await marcar(originales);
+    await avisar(page);
+    const nuevo = panel(page).locator("details.campos-originales:not([data-anterior])");
+    await expect(nuevo).toHaveCount(1);
+    await expect(nuevo).toHaveJSProperty("open", true);
+  });
+
+  test("Documentos conserva scroll del inventario y de la ventana y la selección, sin mostrar «Cargando»", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 520 });
+    await instalarAvisos(page);
+    await abrir(page);
+    const archivos = Array.from({ length: 40 }, (_, i) =>
+      i === 0
+        ? { key: "1".repeat(32), name: "informe.md", relative_path: "informe.md", media_kind: "markdown", bytes: 100, available: true }
+        : { key: i.toString(16).padStart(32, "a"), name: `nota-${i}.json`, relative_path: `evidence/nota-${i}.json`, media_kind: "json", bytes: 10, available: true },
+    );
+    await page.route("**/api/runs/*/files", (ruta) => responder(ruta, archivos));
+    await pestana(page, "Documentos").click();
+    const filas = panel(page).locator(".fila-archivo");
+    await expect(filas).toHaveCount(40);
+    await filas.nth(30).click();
+    await expect(filas.nth(30)).toHaveAttribute("aria-pressed", "true");
+    const lista = panel(page).locator(".lista-archivos");
+    const antes = await lista.evaluate((nodo) => {
+      nodo.scrollTop += 120;
+      nodo.dataset.anterior = "1";
+      return nodo.scrollTop;
+    });
+    expect(antes).toBeGreaterThan(0);
+    // El evento `scroll` llega en el siguiente fotograma: se espera a que la aplicación lo vea.
+    await page.evaluate(() => new Promise((listo) => {
+      window.scrollTo(0, 90);
+      requestAnimationFrame(() => requestAnimationFrame(listo));
+    }));
+    const ventanaAntes = await page.evaluate(() => window.scrollY);
+    expect(ventanaAntes).toBeGreaterThan(0);
+
+    await page.evaluate(() => {
+      window.__cargando = false;
+      new MutationObserver((registros) => {
+        for (const registro of registros) {
+          for (const nodo of registro.addedNodes) {
+            if ((nodo.textContent ?? "").includes("Cargando")) window.__cargando = true;
+          }
+        }
+      }).observe(document.getElementById("revision"), { childList: true, subtree: true, characterData: true });
+    });
+    await avisar(page);
+    const nueva = panel(page).locator(".lista-archivos:not([data-anterior])");
+    await expect(nueva).toHaveCount(1);
+    expect(await nueva.evaluate((nodo) => nodo.scrollTop)).toBe(antes);
+    await expect(filas.nth(30)).toHaveAttribute("aria-pressed", "true");
+    await expect(panel(page).locator("[data-vista-previa]")).toContainText("evidence/nota-30.json");
+    expect(await page.evaluate(() => window.scrollY)).toBe(ventanaAntes);
+    expect(await page.evaluate(() => window.__cargando)).toBe(false);
+  });
+
+  test("cambiar de pestaña no restaura scroll ni foco anteriores", async ({ page }) => {
+    await instalarAvisos(page);
+    await abrir(page, muchos(40));
+    await pestana(page, "Hallazgos").click();
+    const lista = panel(page).locator(".lista-densa");
+    await lista.evaluate((nodo) => { nodo.scrollTop = 240; });
+    await panel(page).locator('[data-filtro="texto"]').focus();
+    await pestana(page, "Validación").click();
+    await pestana(page, "Hallazgos").click();
+    await expect(filasHallazgo(page)).toHaveCount(40);
+    expect(await panel(page).locator(".lista-densa").evaluate((nodo) => nodo.scrollTop)).toBe(0);
+    await expect(pestana(page, "Hallazgos")).toBeFocused();
+    expect(await activo(page)).toMatchObject({ filtro: null });
+  });
+});

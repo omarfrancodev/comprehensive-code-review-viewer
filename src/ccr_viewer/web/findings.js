@@ -109,7 +109,7 @@ const idDe = (hallazgo) => textoDe(hallazgo.id) ?? "Sin ID";
 function fila(hallazgo, activa) {
   const boton = elemento("button", {
     clase: "fila-hallazgo",
-    atributos: { type: "button", "aria-pressed": String(activa) },
+    atributos: { type: "button", "aria-pressed": String(activa), "data-clave": idDe(hallazgo) },
   });
   const meta = elemento("span", { clase: "fila-meta" });
   meta.append(
