@@ -88,6 +88,37 @@ test.describe("cabecera de la revisión", () => {
     expect(errores).toEqual([]);
   });
 
+  test("la región de estado de la copia está en el árbol de accesibilidad antes y después de copiar", async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: { writeText: () => Promise.resolve() },
+      });
+    });
+    await abrir(page);
+    const estado = cabecera(page).locator('.copiar-estado[role="status"]');
+    const visibleParaAT = () =>
+      estado.evaluate((nodo) => {
+        const estilo = getComputedStyle(nodo);
+        return { display: estilo.display, visibilidad: estilo.visibility, conectado: nodo.isConnected };
+      });
+    const antes = await visibleParaAT();
+    expect(antes.conectado).toBe(true);
+    expect(antes.display).not.toBe("none");
+    expect(antes.visibilidad).not.toBe("hidden");
+    await expect(estado).toHaveText("");
+    // Vacía no deja hueco visible en la fila del ID.
+    const hueco = await estado.evaluate((nodo) => nodo.getBoundingClientRect().width);
+    expect(hueco).toBeLessThanOrEqual(1);
+
+    await cabecera(page).getByRole("button", { name: "Copiar ID" }).click();
+    await expect(estado).toHaveText("ID copiado.");
+    const despues = await visibleParaAT();
+    expect(despues.display).not.toBe("none");
+    expect(despues.visibilidad).not.toBe("hidden");
+    await expect(estado).toBeVisible();
+  });
+
   test("un ID largo sin espacios no desborda la página a 375 px", async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 800 });
     const vista = conCambios((v) => {

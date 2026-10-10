@@ -474,6 +474,58 @@ describe("Seguimiento (renderHistory)", () => {
     assert.doesNotMatch(extras.textContent, /previous_finding_id/);
   });
 
+  it("un previous_finding_id mal formado se conserva y no se presenta como ausente", () => {
+    const sinId = /sin ID declarado/;
+    const numerico = crearElemento();
+    renderHistory(numerico, revision({ rereview: [{ ...entrada, previous_finding_id: 7 }] }), () => {});
+    const h3 = numerico.descendientes().find((n) => n.tagName === "H3");
+    assert.equal(h3.textContent, "7");
+    assert.doesNotMatch(numerico.textoCompleto(), sinId);
+
+    const objetoId = crearElemento();
+    renderHistory(objetoId, revision({ rereview: [{ ...entrada, previous_finding_id: { x: 1 } }] }), () => {});
+    const textoObjeto = objetoId.textoCompleto();
+    assert.match(textoObjeto, /"x": 1/);
+    assert.match(textoObjeto, /ID del hallazgo anterior/);
+    assert.doesNotMatch(textoObjeto, sinId);
+
+    const booleano = crearElemento();
+    renderHistory(booleano, revision({ rereview: [{ ...entrada, previous_finding_id: false }] }), () => {});
+    assert.match(booleano.textoCompleto(), /false/);
+    assert.doesNotMatch(booleano.textoCompleto(), sinId);
+  });
+
+  it("un previous_finding_id realmente ausente sí se declara sin ID", () => {
+    for (const previous_finding_id of [undefined, null, ""]) {
+      const nodo = crearElemento();
+      renderHistory(nodo, revision({ rereview: [{ ...entrada, previous_finding_id }] }), () => {});
+      assert.match(nodo.textoCompleto(), /sin ID declarado/);
+    }
+  });
+
+  it("otros campos conocidos con un tipo inesperado no se pierden", () => {
+    const nodo = crearElemento();
+    renderHistory(
+      nodo,
+      revision({
+        rereview: [{
+          status: "new",
+          previous_title: { idioma: "es" },
+          previous_review_id: 12,
+          previous_reference: ["a", "b"],
+          previous_url: false,
+          check_ids: "C001",
+          details: { nota: "x" },
+        }],
+      }),
+      () => {},
+    );
+    const texto = nodo.textoCompleto();
+    for (const esperado of ['"idioma": "es"', "12", '"a"', "false", "C001", '"nota": "x"']) {
+      assert.ok(texto.includes(esperado), `falta ${esperado}`);
+    }
+  });
+
   it("un estado desconocido conserva su valor original", () => {
     const nodo = crearElemento();
     renderHistory(nodo, revision({ rereview: [{ ...entrada, status: "estado_futuro" }] }), () => {});

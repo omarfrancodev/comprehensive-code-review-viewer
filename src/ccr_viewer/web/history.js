@@ -52,15 +52,25 @@ function listaDeIds(valor) {
 
 function tarjetaEntrada(entrada) {
   const articulo = elemento("article", { clase: "seguimiento-entrada", atributos: { "data-estado": entrada.status } });
-  const identificador = typeof entrada.previous_finding_id === "string" && entrada.previous_finding_id !== ""
-    ? entrada.previous_finding_id
-    : "Hallazgo anterior sin ID declarado";
+  // «Sin ID declarado» solo cuando la fuente no declara nada: un valor presente
+  // de otro tipo se muestra tal cual (número) o como JSON (otros tipos).
+  const idAnterior = entrada.previous_finding_id;
+  const sinId = idAnterior === undefined || idAnterior === null || idAnterior === "";
+  let identificador = "Hallazgo anterior";
+  if (sinId) identificador = "Hallazgo anterior sin ID declarado";
+  else if (typeof idAnterior === "string" || typeof idAnterior === "number") identificador = String(idAnterior);
   articulo.append(elemento("h3", { texto: identificador }));
   const estado = elemento("p", { clase: "entrada-estado" });
   estado.append(valorLegible(entrada.status, ESTADOS_REREVIEW));
   articulo.append(estado);
+  const idAtipico = !sinId && typeof idAnterior !== "string" && typeof idAnterior !== "number";
   articulo.append(
     listaDefinitiva([
+      idAtipico
+        ? campo("ID del hallazgo anterior", valorTexto(idAnterior), {
+          nota: "La fuente declara este ID con una forma no esperada; se conserva sin interpretar.",
+        })
+        : null,
       campo("Título anterior", valorTexto(entrada.previous_title), { textoVacio: "Sin título declarado" }),
       campo("Revisión anterior", valorTexto(entrada.previous_review_id), { textoVacio: "No declarada" }),
       campo("Referencia anterior", valorTexto(entrada.previous_reference), { textoVacio: "No declarada" }),
