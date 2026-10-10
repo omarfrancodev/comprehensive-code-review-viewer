@@ -59,6 +59,8 @@ STATIC_RESOURCES = {
     "vendor/marked.esm.js": "text/javascript; charset=utf-8",
     "vendor/purify.es.mjs": "text/javascript; charset=utf-8",
     "vendor/manifest.json": "application/json; charset=utf-8",
+    "vendor/LICENSE.marked.txt": "text/plain; charset=utf-8",
+    "vendor/LICENSE.dompurify.txt": "text/plain; charset=utf-8",
 }
 
 _OPAQUE_ID_LENGTH = 32

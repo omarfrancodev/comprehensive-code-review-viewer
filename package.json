@@ -11,6 +11,8 @@
     "vendor": "node tools/vendor.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "1.64.0"
+    "@playwright/test": "1.64.0",
+    "dompurify": "3.4.16",
+    "marked": "18.1.0"
   }
 }

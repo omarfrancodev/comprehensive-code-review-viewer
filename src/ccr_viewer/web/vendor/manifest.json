@@ -1,0 +1,37 @@
+{
+  "generado_por": "tools/vendor.mjs",
+  "recursos": [
+    {
+      "paquete": "marked",
+      "version": "18.1.0",
+      "archivo": "marked.esm.js",
+      "origen": "node_modules/marked/lib/marked.esm.js",
+      "sha256": "054d73b676031dc8e60e247ef228044fbeebe10af14bac1a6e53852f80f826e5",
+      "bytes": 46345
+    },
+    {
+      "paquete": "dompurify",
+      "version": "3.4.16",
+      "archivo": "purify.es.mjs",
+      "origen": "node_modules/dompurify/dist/purify.es.mjs",
+      "sha256": "c44274a7959cfdd4da871fa78a5d5fbbef55db68d118c5c0833bc4b5cf9633ad",
+      "bytes": 84443
+    }
+  ],
+  "licencias": [
+    {
+      "paquete": "marked",
+      "version": "18.1.0",
+      "archivo": "LICENSE.marked.txt",
+      "origen": "node_modules/marked/LICENSE",
+      "sha256": "8e3a3f82f59a60958f56ca08f445647c32a4733dc7ca6c2c46f6eb898471ab9c"
+    },
+    {
+      "paquete": "dompurify",
+      "version": "3.4.16",
+      "archivo": "LICENSE.dompurify.txt",
+      "origen": "node_modules/dompurify/LICENSE",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    }
+  ]
+}

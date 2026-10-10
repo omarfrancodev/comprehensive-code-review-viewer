@@ -422,3 +422,89 @@ body {
   outline: 2px solid var(--acento);
   outline-offset: 2px;
 }
+
+/* --- Markdown y documentos ------------------------------------------- */
+
+.markdown {
+  overflow-wrap: anywhere;
+}
+
+.markdown h1 {
+  font-size: 1.15rem;
+  margin: 0.4rem 0 0.6rem;
+}
+
+.markdown h2 {
+  font-size: 1.05rem;
+  margin: 0.8rem 0 0.4rem;
+}
+
+.markdown h3 {
+  font-size: 0.95rem;
+  margin: 0.7rem 0 0.3rem;
+}
+
+.markdown table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.5rem 0;
+  display: block;
+  overflow-x: auto;
+}
+
+.markdown th,
+.markdown td {
+  border: 1px solid var(--borde);
+  padding: 0.3rem 0.5rem;
+  text-align: left;
+}
+
+.markdown pre,
+.codigo {
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: 4px;
+  padding: 0.5rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+}
+
+.imagen-omitida,
+.enlace-bloqueado,
+.enlace-no-resuelto {
+  color: var(--texto-suave);
+  font-style: italic;
+}
+
+.enlace-remoto::after {
+  content: " (externo)";
+  color: var(--texto-suave);
+  font-size: 0.78em;
+}
+
+.lista-archivos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.archivo {
+  width: 100%;
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--borde);
+  border-radius: 4px;
+  background: var(--fondo);
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.vista-previa {
+  margin-top: 0.4rem;
+}

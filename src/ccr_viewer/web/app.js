@@ -8,6 +8,7 @@ import {
   subscribeNotices,
 } from "./api.js";
 import { createStore } from "./store.js";
+import { renderDocuments } from "./documents.js";
 import { renderFindings, renderLibrary, renderProfile, renderValidation } from "./views.js";
 import { elemento } from "./dom.js";
 
@@ -15,6 +16,7 @@ const PESTANAS = [
   { id: "ficha", etiqueta: "Ficha", render: renderProfile },
   { id: "hallazgos", etiqueta: "Hallazgos", render: renderFindings },
   { id: "validacion", etiqueta: "Validación", render: renderValidation },
+  { id: "documentos", etiqueta: "Documentos", render: null },
 ];
 
 const store = createStore();
@@ -66,7 +68,17 @@ function dibujarRevision() {
     return;
   }
   const actual = PESTANAS.find((p) => p.id === estado.tab) ?? PESTANAS[0];
-  actual.render(revisionNodo, estado.view);
+  if (actual.render) {
+    actual.render(revisionNodo, estado.view);
+  } else {
+    // Los documentos cargan su inventario bajo demanda.
+    revisionNodo.append(elemento("p", { clase: "estado", texto: "Cargando documentos…" }));
+    void renderDocuments(revisionNodo, estado.view).catch((error) => {
+      revisionNodo.replaceChildren(
+        elemento("p", { clase: "estado estado--error", texto: `No se pudieron cargar los documentos: ${error.message}` }),
+      );
+    });
+  }
   if (estado.newEventCount > 0) {
     revisionNodo.append(
       elemento("p", {

@@ -99,6 +99,54 @@ const BIBLIOTECA = {
   diagnostics: [],
 };
 
+/** Informe Markdown sintético con contenido hostil y estructura real. */
+export const INFORME_SINTETICO = [
+  "# Informe de revisión sintética",
+  "",
+  "## Resumen",
+  "",
+  "Texto con acento: revisión de **entrada** y `código` literal.",
+  "",
+  "| Columna | Valor |",
+  "| --- | --- |",
+  "| Veredicto | aprobable |",
+  "",
+  "### Detalle",
+  "",
+  "<script>window.__pwned = true;</script>",
+  "",
+  "<img src=x onerror=\"window.__pwned = true\">",
+  "",
+  "<iframe src=\"https://ejemplo.invalid\"></iframe>",
+  "",
+  "![imagen remota](https://ejemplo.invalid/imagen.png)",
+  "",
+  "[enlace remoto](https://ejemplo.invalid/revision)",
+  "",
+  "[enlace codificado](javascript:alert(1))",
+  "",
+  "[notas locales](evidence/notes.json)",
+].join("\n");
+
+const ARCHIVOS = [
+  {
+    key: "1".repeat(32),
+    name: "informe.md",
+    relative_path: "informe.md",
+    media_kind: "markdown",
+    bytes: INFORME_SINTETICO.length,
+    available: true,
+  },
+  {
+    key: "2".repeat(32),
+    name: "notes.json",
+    relative_path: "evidence/notes.json",
+    media_kind: "json",
+    bytes: 32,
+    available: true,
+  },
+];
+
 const CONFIG = {
   api_version: 1,
   data: {
@@ -139,7 +187,22 @@ export async function openFixture(page, variant = "final_v7") {
         }),
       ),
   );
-  await page.route("**/api/runs/*/files", (ruta) => ruta.fulfill(envoltura({ api_version: 1, data: [], diagnostics: [] })));
+  await page.route("**/api/runs/*/files", (ruta) =>
+    ruta.fulfill(envoltura({ api_version: 1, data: ARCHIVOS, diagnostics: [] })),
+  );
+  await page.route("**/api/runs/*/files/*", (ruta) =>
+    ruta.fulfill(
+      envoltura({
+        api_version: 1,
+        data: {
+          text: INFORME_SINTETICO,
+          media_kind: "markdown",
+          truncated: false,
+          total_bytes: INFORME_SINTETICO.length,
+        },
+      }),
+    ),
+  );
   await page.route("**/api/runs/*/validate", (ruta) =>
     ruta.fulfill(
       envoltura({
