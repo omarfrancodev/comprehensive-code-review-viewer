@@ -130,4 +130,12 @@ export function renderProfile(contenedor, view) {
   if (areas) limites.push(campo("Cobertura ABCDE", areas));
 
   contenedor.append(seccion("Límites y estado", [listaDefinitiva(limites)]));
+  const declarations = [];
+  declarations.push(campo("Versión del skill", closure?.skill_version ?? closure?.version));
+  declarations.push(campo("Harness", closure?.harness));
+  for (const name of ["profile_snapshot", "executors", "dependencies"]) {
+    const value = review?.[name] ?? closure?.[name];
+    if (value !== undefined && value !== null) declarations.push(campo(name, elemento("pre", { clase: "codigo", texto: JSON.stringify(value, null, 2) })));
+  }
+  contenedor.append(seccion("Declaraciones de ejecución", [elemento("p", { clase: "nota", texto: "Datos declarados por la fuente; no demuestran actividad actual ni verificación del aislamiento." }), listaDefinitiva(declarations)]));
 }

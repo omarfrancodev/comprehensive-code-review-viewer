@@ -622,6 +622,14 @@ def advance_fixture(run: Path, transition: str) -> None:
         closure["state"] = "closing"
         closure["cleanup"] = "pending"
         _escribir_cierre(run, closure)
+        if not (run / "review.json").exists():
+            review = canonical_json_bytes(_review(7))
+            report = b"# Informe de revision sintetica\n\nResultado publicado por el productor de prueba.\n"
+            (run / "review.json").write_bytes(review)
+            (run / "informe.md").write_bytes(report)
+            closure["review_id"] = "CR-" + RUN_ID
+            closure["hashes"]["review.json"] = hashlib.sha256(review).hexdigest()
+            closure["hashes"]["informe.md"] = hashlib.sha256(report).hexdigest()
         closure["state"] = "complete"
         closure["cleanup"] = "not_needed"
         closure["retained"] = True

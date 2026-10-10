@@ -34,7 +34,20 @@ export function crearArchivoSintetico(variant) {
   if (resultado.status !== 0) {
     throw new Error(`no se pudo crear el archivo: ${resultado.stderr}`);
   }
-  return { raiz, base };
+  return { raiz, base, run: resultado.stdout.trim() };
+}
+
+/** Sólo el productor sintético escribe; se usa para verificar SSE e inmutabilidad. */
+export function fixtureOperation(run, operation) {
+  const result = spawnSync("python", ["-c",
+    "import sys,json; from pathlib import Path; sys.path.insert(0,'tests'); "
+    + "from fixtures import advance_fixture,archive_inventory; "
+    + "run=Path(sys.argv[1]); op=sys.argv[2]; "
+    + "advance_fixture(run,op) if op != 'inventory' else None; "
+    + "print(json.dumps(archive_inventory(run),sort_keys=True))", run, operation],
+    { cwd: RAIZ, encoding: "utf8" });
+  if (result.status !== 0) throw new Error(result.stderr);
+  return JSON.parse(result.stdout);
 }
 
 /**
@@ -42,7 +55,7 @@ export function crearArchivoSintetico(variant) {
  * La URL incluye el token de capacidad en el fragmento, como en el uso real.
  */
 export async function startFixtureServer(variant) {
-  const { raiz, base } = crearArchivoSintetico(variant);
+  const { raiz, base, run } = crearArchivoSintetico(variant);
   const proceso = spawn("python", ["-m", "ccr_viewer", "--root", raiz, "--no-browser"], {
     cwd: RAIZ,
     env: { ...process.env, PYTHONUNBUFFERED: "1" },
@@ -78,6 +91,7 @@ export async function startFixtureServer(variant) {
     url,
     raiz,
     base,
+    run,
     stop() {
       proceso.kill();
       try {

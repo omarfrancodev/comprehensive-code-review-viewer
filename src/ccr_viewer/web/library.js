@@ -7,6 +7,7 @@ const ESTADOS = {
   open_activity_unknown: "abierta, actividad desconocida",
   open_recent_activity: "abierta, actividad reciente",
   result_available_closure_pending: "resultado disponible, cierre pendiente",
+  interruption_recorded: "interrupción registrada",
 };
 
 /**
@@ -31,7 +32,7 @@ export function renderLibrary(contenedor, state, dispatch) {
   const campo = (nombre, etiqueta, valor, tipo = "text") => {
     const etiquetaNodo = elemento("label", { texto: etiqueta });
     const entrada = elemento("input", {
-      atributos: { name: nombre, value: valor ?? "", type: tipo },
+      atributos: { name: nombre, value: valor ?? "", type: tipo, "aria-label": etiqueta },
     });
     const envoltorio = elemento("div", { clase: "filtro" });
     envoltorio.append(etiquetaNodo, entrada);
@@ -43,6 +44,12 @@ export function renderLibrary(contenedor, state, dispatch) {
     campo("repository", "Repositorio", state.filters.repository),
     campo("verdict", "Veredicto", state.filters.verdict),
     campo("profile", "Perfil", state.filters.profile),
+    campo("mode", "Modo", state.filters.mode),
+    campo("reference", "Referencia", state.filters.reference),
+    campo("kind", "Tipo", state.filters.kind),
+    campo("open", "Abiertas (true/false)", state.filters.open),
+    campo("date_from", "Desde", state.filters.date_from, "date"),
+    campo("date_to", "Hasta", state.filters.date_to, "date"),
   );
   const botonera = elemento("div", { clase: "filtro-botones" });
   const aplicar = elemento("button", { atributos: { type: "submit" }, texto: "Filtrar" });
@@ -78,7 +85,15 @@ export function renderLibrary(contenedor, state, dispatch) {
   }
 
   const lista = elemento("ul", { clase: "lista-revisiones" });
+  let previousGroup = null;
   for (const item of state.library.items ?? []) {
+    const group = `${item.repository_identity ?? item.repository_label ?? item.key} · ${item.scope_label ?? "Sin alcance"}`;
+    if (previousGroup !== group) {
+      const heading = elemento("li", { clase: "grupo-revisiones" });
+      heading.append(elemento("h3", { texto: group }));
+      lista.append(heading);
+      previousGroup = group;
+    }
     const entrada = elemento("li");
     const boton = elemento("button", {
       clase: state.selectedRun === item.key ? "revision revision--activa" : "revision",
@@ -101,15 +116,30 @@ export function renderLibrary(contenedor, state, dispatch) {
     if (item.recently_observed_change) {
       boton.append(elemento("span", { clase: "marca marca--actividad", texto: "cambio detectado" }));
     }
+    if (item.archive_state === "processing") boton.append(elemento("span", { texto: "trabajo iniciado" }));
+    if (item.last_recorded_at) boton.append(elemento("span", { clase: "nota", texto: `Último registro: ${item.last_recorded_at}` }));
+    if (item.last_observed_change_at) boton.append(elemento("span", { clase: "nota", texto: `Último cambio detectado por el visor: ${item.last_observed_change_at}` }));
+    if (item.phase) boton.append(elemento("span", { clase: "nota", texto: `Fase registrada: ${item.phase}` }));
     boton.addEventListener("click", () => dispatch({ type: "selectRun", key: item.key }));
     entrada.append(boton);
     lista.append(entrada);
   }
   contenedor.append(lista);
+  const paginas = elemento("nav", { clase: "paginacion", atributos: { "aria-label": "Páginas de la biblioteca" } });
+  const limite = state.library.limit ?? 50;
+  for (const [texto, offset, disabled] of [
+    ["Página anterior", Math.max(0, state.offset - limite), state.offset === 0],
+    ["Página siguiente", state.offset + limite, state.offset + limite >= total],
+  ]) {
+    const boton = elemento("button", { texto, atributos: { type: "button", disabled } });
+    boton.addEventListener("click", () => dispatch({ type: "setOffset", offset }));
+    paginas.append(boton);
+  }
+  contenedor.append(paginas);
   contenedor.append(
     elemento("p", {
       clase: "estado",
-      texto: `${total} revisión(es)${state.library?.truncated ? " · la lista está paginada" : ""}`,
+      texto: `${total} revisión(es) · ${state.offset + 1}–${Math.min(state.offset + limite, total)}${state.library?.diagnostics?.length ? " · Biblioteca con limitaciones de exploración" : ""}`,
     }),
   );
 }

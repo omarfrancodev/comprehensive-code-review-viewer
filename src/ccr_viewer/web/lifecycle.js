@@ -29,6 +29,12 @@ function identidad(valor) {
   return partes.filter(Boolean).join(" · ");
 }
 
+function tiempo(value) {
+  if (!value || !Number.isFinite(Date.parse(value))) return elemento("span", { texto: value ?? "sin tiempo utilizable" });
+  const date = new Date(value);
+  return elemento("time", { texto: date.toLocaleString("es"), atributos: { datetime: value, title: `${date.toISOString()} UTC · Origen: ${value}` } });
+}
+
 function filaEvento(evento, seleccionado) {
   const fila = elemento("li", {
     clase: seleccionado ? "hito hito--seleccionado" : "hito",
@@ -41,7 +47,7 @@ function filaEvento(evento, seleccionado) {
 
   const meta = elemento("dl", { clase: "campos hito-meta" });
   const hora = elemento("dd");
-  hora.textContent = evento.temporal_at ?? "sin tiempo utilizable";
+  hora.append(tiempo(evento.temporal_at));
   hora.append(
     elemento("span", {
       clase: "nota",
@@ -50,7 +56,7 @@ function filaEvento(evento, seleccionado) {
   );
   const campos = [
     ["Tiempo", hora],
-    ["Registro", evento.recorded_at ?? null],
+    ["Registro", evento.recorded_at ? tiempo(evento.recorded_at) : null],
     ["Procedencia", evento.provenance ? `${evento.provenance.kind}: ${evento.provenance.source ?? "sin fuente"}` : null],
     ["Registrador", identidad(evento.recorder)],
     ["Actor", identidad(evento.actor)],
@@ -71,7 +77,19 @@ function filaEvento(evento, seleccionado) {
 }
 
 function controles(repeticion, redibujar) {
-  const caja = elemento("div", { clase: "reproduccion", atributos: { role: "group", "aria-label": "Controles de reproducción" } });
+  const caja = elemento("div", { clase: "reproduccion", atributos: { role: "group", "tabindex": "0", "aria-label": "Controles de reproducción" } });
+  caja.addEventListener("keydown", event => {
+    if (event.target !== caja) return;
+    const actions = {
+      ArrowLeft: () => repeticion.step(-1), ArrowRight: () => repeticion.step(1),
+      Home: () => repeticion.seek(repeticion.order()[0]), End: () => repeticion.seek(repeticion.order().at(-1)),
+      " ": () => repeticion.state().mode === "playing" ? repeticion.pause() : repeticion.play(),
+    };
+    if (actions[event.key]) { event.preventDefault(); actions[event.key](); redibujar(); }
+  });
+  const slider = elemento("input", { atributos: { type: "range", min: 0, max: Math.max(0, repeticion.order().length - 1), value: Math.max(0, repeticion.order().indexOf(repeticion.state().selectedEventId)), "aria-label": "Evento seleccionado" } });
+  slider.addEventListener("input", () => { repeticion.seek(repeticion.order()[Number(slider.value)]); redibujar(); });
+  caja.append(slider);
   const boton = (texto, accion, atributos = {}) => {
     const nodo = elemento("button", { clase: "control", atributos: { type: "button", ...atributos }, texto });
     nodo.addEventListener("click", () => {
@@ -135,6 +153,8 @@ export function renderLifecycle(contenedor, trace, repeticion) {
   const redibujar = () => {
     const desplazamiento = contenedor.scrollTop;
     pintarCuerpo(cuerpo, trace, repeticion);
+    const slider = contenedor.querySelector('input[type="range"]');
+    if (slider) slider.value = String(Math.max(0, repeticion.order().indexOf(repeticion.state().selectedEventId)));
     contenedor.scrollTop = desplazamiento;
   };
 
@@ -156,6 +176,7 @@ export function renderLifecycle(contenedor, trace, repeticion) {
   }
   contenedor.append(cabecera, controles(repeticion, redibujar), cuerpo);
   pintarCuerpo(cuerpo, trace, repeticion);
+  return repeticion.subscribe(redibujar);
 }
 
 /** Repinta hitos, orden temporal y relaciones sin tocar los controles. */

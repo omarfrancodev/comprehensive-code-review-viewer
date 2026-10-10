@@ -38,13 +38,15 @@ function ultimoPorSecuencia(eventos) {
 /** Crea el control de reproducción de una traza. */
 export function createPlayback(eventos = [], opciones = {}) {
   const reloj = opciones.clock ?? relojDelNavegador();
-  let lista = [...eventos];
+  let lista = [...eventos].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
   let vistos = new Set(lista.map((evento) => evento.event_id));
   let indice = Math.max(0, lista.length - 1);
   let modo = "live";
   let velocidad = opciones.speed ?? 1;
   let nuevos = 0;
   let temporizador = null;
+  const listeners = new Set();
+  const notify = () => { for (const listener of listeners) listener(estado()); };
 
   const estado = () => ({
     mode: modo,
@@ -75,15 +77,18 @@ export function createPlayback(eventos = [], opciones = {}) {
       if (indice >= lista.length - 1) {
         parar();
         modo = "paused";
+        notify();
         return;
       }
       indice += 1;
+      notify();
       programar();
     }, espera);
   };
 
   return {
     state: estado,
+    subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
 
     /** Orden canónico de grabación; no cambia aunque se ordene la vista. */
     order: () => lista.map((evento) => evento.event_id),
@@ -92,9 +97,10 @@ export function createPlayback(eventos = [], opciones = {}) {
     temporalOrder: () =>
       [...lista]
         .sort((a, b) => {
-          const base = (a.temporal_basis ?? "").localeCompare(b.temporal_basis ?? "");
-          if (base !== 0) return base;
-          const tiempo = (a.temporal_at ?? "").localeCompare(b.temporal_at ?? "");
+          const left = Date.parse(a.temporal_at ?? a.occurred_at ?? a.recorded_at);
+          const right = Date.parse(b.temporal_at ?? b.occurred_at ?? b.recorded_at);
+          if (Number.isFinite(left) !== Number.isFinite(right)) return Number.isFinite(left) ? -1 : 1;
+          const tiempo = Number.isFinite(left) ? left - right : 0;
           if (tiempo !== 0) return tiempo;
           return (a.sequence ?? 0) - (b.sequence ?? 0);
         })
@@ -107,6 +113,7 @@ export function createPlayback(eventos = [], opciones = {}) {
     step(delta) {
       if (modo === "playing") parar();
       avanzar(delta);
+      notify();
     },
 
     seek(eventId) {
@@ -116,6 +123,7 @@ export function createPlayback(eventos = [], opciones = {}) {
       indice = encontrado;
       modo = "paused";
       nuevos = 0;
+      notify();
     },
 
     play() {
@@ -123,11 +131,13 @@ export function createPlayback(eventos = [], opciones = {}) {
       if (modo === "live") indice = 0;
       modo = "playing";
       programar();
+      notify();
     },
 
     pause() {
       parar();
       modo = "paused";
+      notify();
     },
 
     setSpeed(valor) {
@@ -141,6 +151,7 @@ export function createPlayback(eventos = [], opciones = {}) {
     /** Incorpora una traza nueva sin mover un cursor pausado. */
     ingest(trace) {
       const entrantes = Array.isArray(trace?.events) ? trace.events : [];
+      const seleccionado = estado().selectedEventId;
       const nuevosVistos = entrantes.filter((evento) => !vistos.has(evento.event_id));
       nuevos += nuevosVistos.length;
       for (const evento of nuevosVistos) vistos.add(evento.event_id);
@@ -150,7 +161,6 @@ export function createPlayback(eventos = [], opciones = {}) {
       for (const evento of entrantes) porIdentificador.set(evento.event_id, evento);
       lista = [...porIdentificador.values()].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
 
-      const seleccionado = estado().selectedEventId;
       if (modo !== "live" && seleccionado) {
         // Un evento con hora anterior no desplaza un cursor pausado.
         const posicion = lista.findIndex((evento) => evento.event_id === seleccionado);
@@ -158,6 +168,7 @@ export function createPlayback(eventos = [], opciones = {}) {
       } else if (modo === "live") {
         indice = Math.max(0, lista.length - 1);
       }
+      notify();
     },
 
     /** Vuelve al último evento y descarta el contador de eventos nuevos. */
@@ -166,12 +177,14 @@ export function createPlayback(eventos = [], opciones = {}) {
       modo = "live";
       nuevos = 0;
       indice = Math.max(0, lista.length - 1);
+      notify();
     },
 
     destroy() {
       parar();
       modo = "paused";
       lista = [];
+      listeners.clear();
     },
   };
 }

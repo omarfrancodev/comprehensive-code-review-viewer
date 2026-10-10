@@ -2,14 +2,14 @@
  * Canalización segura de Markdown.
  *
  * El informe de origen es dato, nunca instrucción. El orden es deliberado:
- * 1) se escapan las etiquetas HTML crudas para que marked no las interprete,
- * 2) marked genera el HTML,
+ * 1) marked distingue los tokens HTML del código literal,
+ * 2) el renderizador escapa HTML e imágenes mientras genera el HTML Markdown,
  * 3) DOMPurify lo depura con una lista de etiquetas estrictamente Markdown,
  * 4) los enlaces e imágenes se clasifican y se vuelven seguros.
  */
 
 // Se usan las copias vendorizadas locales: nunca node_modules ni una CDN.
-import { marked } from "./vendor/marked.esm.js";
+import { marked, Renderer } from "./vendor/marked.esm.js";
 import DOMPurify from "./vendor/purify.es.mjs";
 
 /** Etiquetas que sobreviven: Markdown estándar, sin HTML incrustado. */
@@ -116,8 +116,15 @@ function textoAlternativo(alt, titulo) {
  */
 export function renderMarkdown(texto, contenedor, resolveLink) {
   const resolver = typeof resolveLink === "function" ? resolveLink : () => null;
-  const escapado = escapeRawHtml(texto);
-  const generado = marked.parse(escapado, { gfm: true, breaks: true, async: false });
+  const escape = text => String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const renderer = new Renderer();
+  renderer.html = token => escape(token.text);
+  renderer.image = token => escape(`[${textoAlternativo(token.text, token.title)}]`);
+  // Sólo los tokens HTML son texto inerte. Marked conserva el código literal.
+  const generado = marked.parse(String(texto ?? ""), {
+    gfm: true, breaks: true, async: false,
+    renderer,
+  });
 
   const limpio = DOMPurify.sanitize(generado, {
     ALLOWED_TAGS: ETIQUETAS_PERMITIDAS,
@@ -126,7 +133,6 @@ export function renderMarkdown(texto, contenedor, resolveLink) {
     ALLOW_ARIA_ATTR: false,
     FORBID_TAGS: ["style", "script", "iframe", "form", "svg", "math", "object", "embed"],
     FORBID_ATTR: ["style", "srcset"],
-    USE_PROFILES: { html: true },
   });
 
   const plantilla = document.createElement("template");
@@ -161,9 +167,14 @@ export function renderMarkdown(texto, contenedor, resolveLink) {
     }
     const resuelto = resolver(destino);
     if (resuelto && resuelto.fileKey) {
+      enlace.setAttribute("href", "#documento");
       enlace.setAttribute("data-file-key", resuelto.fileKey);
       enlace.setAttribute("data-run-key", resuelto.runKey ?? "");
       enlace.classList.add("enlace-local");
+      enlace.addEventListener("click", event => {
+        event.preventDefault();
+        contenedor.dispatchEvent(new CustomEvent("open-local-document", { bubbles: true, detail: { ...resuelto, fragment: destino.split("#")[1] ?? null } }));
+      });
     } else {
       const texto = document.createElement("span");
       texto.className = "enlace-no-resuelto";

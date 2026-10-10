@@ -4,8 +4,6 @@ import { getFiles, getPreview } from "./api.js";
 import { elemento, seccion } from "./dom.js";
 import { renderMarkdown } from "./markdown.js";
 
-const LIMITE_PREVIEW = 2 * 1024 * 1024;
-
 /**
  * Dibuja la lista de documentos de la corrida y el informe Markdown.
  * Nada se ejecuta: un archivo de código se muestra como texto inerte.
@@ -38,6 +36,10 @@ export async function renderDocuments(contenedor, view, api = { getFiles, getPre
   const markdown = archivos.find((archivo) => archivo.relative_path.endsWith(".md"));
 
   const panel = elemento("div", { clase: "documentos" });
+  panel.addEventListener("open-local-document", event => {
+    const entry = archivos.find(file => file.key === event.detail.fileKey);
+    if (entry) void mostrarVistaPrevia(panel, entry, event.detail.runKey ?? runKey, api);
+  });
 
   if (informe || markdown) {
     const destino = informe ?? markdown;
@@ -68,12 +70,9 @@ export async function renderDocuments(contenedor, view, api = { getFiles, getPre
 }
 
 async function cargarTexto(api, runKey, archivo) {
-  if (archivo.bytes > LIMITE_PREVIEW) {
-    return `# ${archivo.name}\n\nEl archivo supera el límite de vista previa y no se muestra completo.`;
-  }
   try {
     const vista = await api.getPreview(runKey, archivo.key);
-    return vista.text;
+    return vista.text + (vista.truncated ? "\n\nVista previa truncada; el archivo completo se conserva en el origen." : "");
   } catch {
     return null;
   }
@@ -127,7 +126,11 @@ async function mostrarVistaPrevia(contenedor, archivo, runKey, api) {
           : `Archivo completo: ${vista.total_bytes} bytes.`,
       }),
     );
-    caja.append(elemento("pre", { clase: "codigo", texto: vista.text }));
+    if (archivo.relative_path.endsWith(".md")) {
+      const markdown = elemento("article", { clase: "documento-texto" });
+      renderMarkdown(vista.text, markdown);
+      caja.append(markdown);
+    } else caja.append(elemento("pre", { clase: "codigo", texto: vista.text }));
   } catch (error) {
     caja.append(elemento("p", { clase: "estado estado--error", texto: `No se pudo leer: ${error.message}` }));
   }
