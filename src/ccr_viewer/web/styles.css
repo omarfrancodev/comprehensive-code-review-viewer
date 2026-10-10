@@ -131,3 +131,294 @@ body {
     transition: none !important;
   }
 }
+/* --- Estructuras de la revisión ------------------------------------- */
+
+.avisos:empty {
+  display: none;
+}
+
+.avisos {
+  margin: 0;
+  padding: 0.5rem 1.25rem;
+  border-bottom: 1px solid var(--borde);
+}
+
+.estado--aviso,
+.estado--error {
+  color: var(--error);
+  font-size: 0.9rem;
+  margin: 0.25rem 0;
+}
+
+.detalle {
+  min-width: 0;
+}
+
+.barra-revision:empty {
+  display: none;
+}
+
+.pestanas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.pestana {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--borde);
+  border-radius: 4px 4px 0 0;
+  background: var(--fondo);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pestana--activa {
+  background: var(--acento);
+  border-color: var(--acento);
+  color: #ffffff;
+}
+
+.pestana:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+}
+
+.revision-encabezado h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.1rem;
+}
+
+.identidad,
+.nota {
+  color: var(--texto-suave);
+  font-size: 0.85rem;
+  margin: 0.15rem 0;
+}
+
+.seccion {
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+  background: var(--fondo);
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.seccion > h2 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--texto-suave);
+}
+
+.campos {
+  margin: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.campo {
+  display: grid;
+  grid-template-columns: minmax(9rem, 14rem) 1fr;
+  gap: 0.5rem;
+  align-items: start;
+}
+
+@media (max-width: 640px) {
+  .campo {
+    grid-template-columns: 1fr;
+  }
+}
+
+.campo dt {
+  color: var(--texto-suave);
+  font-size: 0.85rem;
+}
+
+.campo dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.valor--desconocido {
+  color: var(--texto-suave);
+  font-style: italic;
+}
+
+.marcas {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.marca {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--borde);
+  font-size: 0.75rem;
+}
+
+.marca--aviso,
+.marca--bloqueante,
+.marca--material {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.marca--material {
+  color: var(--error);
+}
+
+.lista-simple {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.areas {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.resumen {
+  margin-bottom: 0.75rem;
+}
+
+.prioridades {
+  list-style: none;
+  margin: 0.25rem 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.hallazgo,
+.comprobacion {
+  border-top: 1px solid var(--borde);
+  padding: 0.6rem 0;
+}
+
+.hallazgo:first-of-type,
+.comprobacion:first-of-type {
+  border-top: none;
+}
+
+.hallazgo h3,
+.comprobacion h3 {
+  margin: 0 0 0.15rem;
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+  letter-spacing: 0.03em;
+}
+
+.hallazgo h4 {
+  margin: 0 0 0.3rem;
+  font-size: 1rem;
+}
+
+.hallazgo h5 {
+  margin: 0.5rem 0 0.2rem;
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+}
+
+.ubicacion {
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 0.82rem;
+  color: var(--texto-suave);
+  overflow-wrap: anywhere;
+}
+
+.evidencia {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.88rem;
+}
+
+.filtros {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.filtro {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.filtro label {
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+}
+
+.filtro input {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--borde);
+  border-radius: 4px;
+  background: var(--fondo);
+  color: inherit;
+  font: inherit;
+}
+
+.filtro-botones {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.filtro-botones button {
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--borde);
+  border-radius: 4px;
+  background: var(--fondo);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.revision {
+  display: grid;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--borde);
+  border-radius: 4px;
+  background: var(--fondo);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.revision > span {
+  display: block;
+}
+
+.revision-alcance {
+  font-weight: 600;
+}
+
+.revision-repo,
+.revision-estado {
+  color: var(--texto-suave);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.revision--activa {
+  border-color: var(--acento);
+  box-shadow: inset 3px 0 0 var(--acento);
+}
+
+.revision:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+}

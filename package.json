@@ -1,0 +1,16 @@
+{
+  "name": "comprehensive-code-review-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pruebas de desarrollo del visor web de Comprehensive Code Review.",
+  "license": "UNLICENSED",
+  "scripts": {
+    "test:js": "node --test tests/js",
+    "test:browser": "playwright test",
+    "vendor": "node tools/vendor.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0"
+  }
+}
