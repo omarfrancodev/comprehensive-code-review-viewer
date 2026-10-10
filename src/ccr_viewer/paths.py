@@ -177,9 +177,25 @@ def _relative_parts(relative: str) -> tuple[str, ...]:
 
 
 def _freeze_root(root: Path) -> _FrozenRoot:
-    resolved = Path(root).resolve()
-    status = os.stat(resolved)
-    return _FrozenRoot(resolved, (status.st_dev, status.st_ino))
+    # La selección inicial ya resolvió la raíz. Resolverla otra vez promovería
+    # un junction sustituido después de catalogar a una nueva raíz confiable.
+    selected = Path(root).absolute()
+    if os.name == "nt":
+        # Expandir aliases 8.3 no debe resolver junctions como Path.resolve().
+        import ctypes
+        from ctypes import wintypes
+        get_long = ctypes.WinDLL("kernel32", use_last_error=True).GetLongPathNameW
+        get_long.argtypes = [wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD]
+        get_long.restype = wintypes.DWORD
+        buffer = ctypes.create_unicode_buffer(32768)
+        length = get_long(str(selected), buffer, len(buffer))
+        if 0 < length < len(buffer):
+            selected = Path(buffer.value)
+    for component in (selected, *selected.parents):
+        if is_reparse(component):
+            raise UnsafePathError("La raíz o uno de sus ancestros es un enlace o reparse.")
+    status = os.stat(selected)
+    return _FrozenRoot(selected, (status.st_dev, status.st_ino))
 
 
 def safe_regular_file(root: Path, relative: str) -> Path:
@@ -189,7 +205,7 @@ def safe_regular_file(root: Path, relative: str) -> Path:
     directorios y cualquier ruta que quede fuera de la raíz resuelta.
     """
 
-    base = Path(root).resolve()
+    base = _freeze_root(root).root
     candidate = base
     for part in _relative_parts(relative):
         candidate = candidate / part
@@ -250,18 +266,19 @@ def _handle_is_within(frozen: _FrozenRoot, handle: BinaryIO, expected: Path) -> 
     try:
         opened = os.fstat(handle.fileno())
         target = os.lstat(expected)
+        root_status = os.stat(frozen.root)
     except OSError:
         return False
-    if (opened.st_dev, opened.st_ino) != frozen.key:
+    if (root_status.st_dev, root_status.st_ino) != frozen.key:
         return False
-    return (opened.st_dev, opened.st_ino) == (target.st_dev, target.st_ino)
+    return stat.S_ISREG(opened.st_mode) and (opened.st_dev, opened.st_ino) == (target.st_dev, target.st_ino)
 
 
 def _open_relative_nofollow(directory_fd: int, relative: str) -> int:
     """Abre un archivo recorriendo componentes sin seguir enlaces desde la raíz."""
 
     parts = _relative_parts(relative)
-    current = directory_fd
+    current = os.dup(directory_fd)
     try:
         for part in parts[:-1]:
             following = os.open(
@@ -273,9 +290,8 @@ def _open_relative_nofollow(directory_fd: int, relative: str) -> int:
             current = following
         return os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW, dir_fd=current)
     finally:
-        if current != directory_fd:
-            with contextlib.suppress(OSError):
-                os.close(current)
+        with contextlib.suppress(OSError):
+            os.close(current)
 
 
 @contextlib.contextmanager

@@ -11,6 +11,7 @@ from __future__ import annotations
 import queue
 import threading
 import time
+from datetime import datetime, timezone
 from typing import Callable
 
 from .adapters import Catalog
@@ -51,9 +52,13 @@ def derive_display_state(view: dict, recently_observed_change: bool) -> tuple[st
         return "closed", None
     if archive_state == "closing":
         return "result_available_closure_pending", None
+    if archive_state in ("prepared", "processing", "retaining") and summary.get("capabilities", {}).get("has_review"):
+        return "result_available_closure_pending", summary.get("phase")
+    if summary.get("phase") == "interrupted":
+        return "interruption_recorded", "interrupted"
     if bool(summary.get("recently_observed_change")) or recently_observed_change:
-        return "open_recent_activity", None
-    return "open_activity_unknown", None
+        return "open_recent_activity", summary.get("phase")
+    return "open_activity_unknown", summary.get("phase")
 
 
 class LiveCollector:
@@ -69,6 +74,7 @@ class LiveCollector:
         self._fingerprints: dict[str, str] = {}
         self._last_rescan = 0.0
         self._last_change: dict[str, float] = {}
+        self._last_detected_at: dict[str, str] = {}
         self._thread: threading.Thread | None = None
         self._stopping = threading.Event()
 
@@ -82,7 +88,8 @@ class LiveCollector:
             self._clients.append(client)
             if last_cursor is None:
                 self._enqueue(client, self._make_notice(_CATALOG_CHANGED, None, None))
-            elif last_cursor >= self._cursor or last_cursor < 0:
+            elif (last_cursor > self._cursor or last_cursor < 0
+                  or (self._replay and last_cursor < self._replay[0]["cursor"] - 1)):
                 # El búfer ya no cubre ese cursor: el cliente debe recargar.
                 self._enqueue(client, self._make_notice(_RESYNC, None, None))
             else:
@@ -156,26 +163,34 @@ class LiveCollector:
         now = self._clock()
         with self._lock:
             rescan = (now - self._last_rescan) >= LIVE_RESCAN_SECONDS
-            self._last_rescan = now
+            rescan = rescan or not self._fingerprints
+            if rescan:
+                self._last_rescan = now
 
         before = dict(self._fingerprints)
         try:
-            self.catalog.refresh()
+            self.catalog.refresh(rescan=rescan)
         except Exception:  # noqa: BLE001 - un catálogo ilegible no publica cambios
             return []
 
         published: list[dict] = []
+        keys = {location.key for location in self.catalog.locations()}
+        for mapping in (self._fingerprints, self._last_change, self._last_detected_at):
+            for key in set(mapping) - keys:
+                del mapping[key]
         for location in self.catalog.locations():
             snapshot = self.catalog.snapshot(location.key)
             fingerprint = snapshot["fingerprint"]
             previous = before.get(location.key)
             changed = previous is None or previous != fingerprint
             if changed:
-                self._fingerprints[location.key] = fingerprint
                 if snapshot.get("updating"):
                     # Una instantánea en transición no es una versión coherente nueva.
                     continue
-                self._last_change[location.key] = now
+                self._fingerprints[location.key] = fingerprint
+                if previous is not None:
+                    self._last_change[location.key] = now
+                    self._last_detected_at[location.key] = datetime.now(timezone.utc).isoformat()
                 kind = _CATALOG_CHANGED if (rescan or previous is None) else _RUN_CHANGED
                 published.append(self._make_notice(kind, location.key, fingerprint))
                 self._broadcast(published[-1])
@@ -194,6 +209,10 @@ class LiveCollector:
         if seen is None:
             return False
         return (self._clock() - seen) <= ACTIVE_CHANGE_WINDOW_SECONDS
+
+    def last_observed_at(self, run_key: str) -> str | None:
+        """Hora del cambio observado por el visor, distinta del registro del productor."""
+        return self._last_detected_at.get(run_key)
 
     def _expire(self, run_key: str, now: float) -> None:
         for key, moment in list(self._last_change.items()):

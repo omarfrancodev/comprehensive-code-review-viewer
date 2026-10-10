@@ -70,11 +70,18 @@ class DisplayStateTests(unittest.TestCase):
 
     def test_processing_source_alone_is_unknown_activity(self) -> None:
         view = self._view("processing_archive_v5")
+        # Aislar el estado declarado: este fixture también contiene discovery.
+        view["summary"]["phase"] = None
         state, phase = derive_display_state(view, False)
         self.assertEqual(state, "open_activity_unknown")
         self.assertIsNone(phase)
         # El estado de la fuente se conserva aparte: trabajo iniciado, no actividad viva.
         self.assertEqual(view["summary"]["archive_state"], "processing")
+
+    def test_explicit_discovery_keeps_phase_without_claiming_live_activity(self) -> None:
+        state, phase = derive_display_state(self._view("processing_archive_v5"), False)
+        self.assertEqual(state, "open_activity_unknown")
+        self.assertEqual(phase, "discovery")
 
     def test_observed_change_yields_recent_activity(self) -> None:
         state, _ = derive_display_state(self._view("prepared_archive_v5"), True)

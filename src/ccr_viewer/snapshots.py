@@ -114,7 +114,7 @@ def _stat_signature(path: Path) -> tuple | None:
         status = os.lstat(path)
     except OSError:
         return None
-    return (status.st_size, status.st_mtime_ns)
+    return (status.st_size, status.st_mtime_ns, status.st_ctime_ns, status.st_ino)
 
 
 def _file_snapshot(data: bytes | None, parsed: Any) -> dict:
@@ -143,7 +143,7 @@ def _read_one(root: Path, relative: str, *, parse_json: bool) -> tuple[dict, lis
             )
         )
         return _file_snapshot(None, None), diagnostics
-    except UnsafePathError as error:
+    except (UnsafePathError, OSError) as error:
         diagnostics.append(
             diagnostic("snapshot.unreadable_file", "warning", str(error), relative)
         )
@@ -209,9 +209,13 @@ def _read_one(root: Path, relative: str, *, parse_json: bool) -> tuple[dict, lis
 
 
 def _closure_signature(root: Path) -> tuple:
-    return tuple(
-        (name, _stat_signature(root / name)) for name in (OWNERSHIP_MARKER, CLOSURE_FILE)
-    )
+    signatures = []
+    for name in (OWNERSHIP_MARKER, CLOSURE_FILE):
+        file, _issues = _read_one(root, name, parse_json=False)
+        raw = file["raw"]
+        signatures.append((name, _stat_signature(root / name),
+                           hashlib.sha256(raw).digest() if isinstance(raw, bytes) else None))
+    return tuple(signatures)
 
 
 def _transition_marker(files: dict) -> str | None:
@@ -301,7 +305,12 @@ def read_snapshot(location: RunLocation, *, previous: dict | None = None) -> dic
         after = _closure_signature(root)
         marker = _transition_marker(attempt_files)
 
-        if before == after and marker is None:
+        matching_bytes = all(
+            signature[2] == (hashlib.sha256(attempt_files[signature[0]]["raw"]).digest()
+                             if isinstance(attempt_files[signature[0]]["raw"], bytes) else None)
+            for signature in after
+        )
+        if before == after and matching_bytes and marker is None:
             files = attempt_files
             diagnostics = attempt_diagnostics
             return {

@@ -17,6 +17,7 @@ from .adapters import CLOSURE_SCHEMAS, CLOSURE_STATES, CLOSURE_STATES_SCHEMA_5
 from .discovery import RunLocation, diagnostic
 from .paths import UnsafePathError, open_archive_file
 from .trace import parse_trace
+from .snapshots import read_snapshot
 
 __all__ = ["hash_regular_file", "validate_archive", "HASH_CHUNK_BYTES"]
 
@@ -54,7 +55,7 @@ def _allowed_states(schema: int) -> tuple[str, ...]:
     return CLOSURE_STATES
 
 
-def _validate_ownership(root: Path, closure: dict, marker: Any) -> dict:
+def _validate_ownership(root: Path, closure: dict, marker: Any, closure_bytes: bytes | None) -> dict:
     name = _OWNERSHIP_MARKER
     if marker is None:
         return _check(name, "limited", "La corrida no conserva marcador de propiedad.")
@@ -76,11 +77,10 @@ def _validate_ownership(root: Path, closure: dict, marker: Any) -> dict:
         if scope_digest != hashlib.sha256(_canonical(closure.get("scope"))).hexdigest():
             problems.append("scope_sha256 no corresponde al alcance registrado")
 
-    try:
-        digest = hashlib.sha256((root / "cierre.json").read_bytes()).hexdigest()
-    except OSError as error:
-        return _check(name, "failed", "No se pudo leer cierre.json: " + str(error))
-    recorded = {marker.get("manifest_sha256"), marker.get("previous_manifest_sha256")}
+    if closure_bytes is None:
+        return _check(name, "limited", "No hay bytes coherentes de cierre.json.")
+    digest = hashlib.sha256(closure_bytes).hexdigest()
+    recorded = (marker.get("manifest_sha256"), marker.get("previous_manifest_sha256"))
     if digest not in recorded:
         problems.append("cierre.json no coincide con el hash del marcador")
 
@@ -221,6 +221,10 @@ def validate_archive(location: RunLocation, snapshot: Mapping[str, Any]) -> dict
     checks: list[dict] = []
     diagnostics: list[dict] = []
 
+    if snapshot.get("updating"):
+        return {"status": "updating", "checks": [_check("snapshot", "limited", "Se espera una instantánea coherente antes de verificar los archivos.")],
+                "diagnostics": [diagnostic("integrity.updating", "info", "La corrida está en transición; la integridad queda pendiente.", "cierre.json")]}
+
     if not isinstance(closure_raw, dict):
         checks.append(_check("cierre.json", "failed", "El cierre no se pudo interpretar."))
         diagnostics.append(
@@ -241,13 +245,15 @@ def validate_archive(location: RunLocation, snapshot: Mapping[str, Any]) -> dict
     else:
         checks.append(_validate_state(closure))
 
-    checks.append(_validate_ownership(root, closure, marker_raw))
+    checks.append(_validate_ownership(root, closure, marker_raw, files.get("cierre.json", {}).get("raw")))
     checks.append(_validate_layout(closure))
     checks.append(_validate_identity(closure, review_raw))
     if isinstance(schema, int) and schema in _TRACE_ARCHIVE_SCHEMAS:
         raw_trace = files.get("trazabilidad.jsonl", {}).get("raw")
         checks.append(_validate_trace(root, closure, raw_trace if isinstance(raw_trace, bytes) else None))
     checks.extend(_validate_inventory(root, closure))
+    latest = read_snapshot(location, previous=dict(snapshot))
+    changed_during_validation = latest.get("updating") or latest.get("fingerprint") != snapshot.get("fingerprint")
 
     if any(item["status"] == "failed" for item in checks):
         status = "failed"
@@ -262,7 +268,7 @@ def validate_archive(location: RunLocation, snapshot: Mapping[str, Any]) -> dict
         and closure.get("state") == "retaining"
         for _ in (0,)
     )
-    if pending or "snapshot.transition_pending" in snapshot_codes or snapshot.get("updating"):
+    if pending or "snapshot.transition_pending" in snapshot_codes or changed_during_validation:
         diagnostics.append(
             diagnostic(
                 "integrity.updating",
@@ -273,6 +279,7 @@ def validate_archive(location: RunLocation, snapshot: Mapping[str, Any]) -> dict
             )
         )
         status = "updating"
+        checks = [_check(item["name"], "limited", "El productor cambió la corrida durante la verificación; vuelve a verificar cuando esté estable.") for item in checks]
 
     if any(item.get("code") == "snapshot.duplicate_keys" for item in snapshot.get("diagnostics", [])):
         status = "limited" if status == "verified" else status

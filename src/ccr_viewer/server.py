@@ -24,10 +24,10 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from . import __version__
 from .adapters import Catalog
 from .integrity import validate_archive
-from .live import HEARTBEAT_SECONDS, LiveCollector
+from .live import HEARTBEAT_SECONDS, LiveCollector, derive_display_state
 from .paths import CcrViewerError, RootConfig
 from .references import list_files, read_preview
-from .trace import parse_trace
+from .trace import parse_trace, resolve_relations
 
 __all__ = ["ViewerServer", "serve", "API_VERSION", "SESSION_COOKIE", "STATIC_RESOURCES"]
 
@@ -266,7 +266,7 @@ class ViewerServer:
         filters = {
             name: values[0]
             for name, values in query.items()
-            if name in {"q", "repository", "mode", "kind", "profile", "verdict", "open"}
+            if name in {"q", "repository", "mode", "reference", "kind", "profile", "verdict", "open", "date_from", "date_to"}
         }
         try:
             offset = _positive_int(query, "offset", 0)
@@ -274,10 +274,17 @@ class ViewerServer:
         except ValueError as error:
             raise _RequestError(400, "invalid_options", str(error)) from None
         try:
+            self.catalog.refresh()
             page = self.catalog.list_runs(filters, offset=offset, limit=limit)
         except ValueError as error:
             raise _RequestError(400, "invalid_options", str(error)) from None
+        page = {**page, "items": [self._present_summary(item) for item in page["items"]]}
         return {"api_version": API_VERSION, "data": page, "diagnostics": []}
+
+    def _present_summary(self, summary):
+        recent = self.collector.recently_observed(summary["key"])
+        state, _ = derive_display_state({"summary": summary}, recent)
+        return {**summary, "recently_observed_change": recent, "last_observed_change_at": self.collector.last_observed_at(summary["key"]), "display_state": state}
 
     def _route_run(self, method: str, tail: str, query: dict) -> tuple:
         parts = tail.split("/")
@@ -286,6 +293,7 @@ class ViewerServer:
             raise _RequestError(404, "unknown_id", "Identificador de corrida desconocido.")
         try:
             view = self.catalog.get_run(run_key)
+            view = {**view, "summary": self._present_summary(view["summary"])}
             location = self._location_for(run_key)
         except KeyError:
             raise _RequestError(404, "unknown_id", "Identificador de corrida desconocido.") from None
@@ -325,20 +333,24 @@ class ViewerServer:
                 return location
         raise KeyError(run_key)
 
-    @staticmethod
-    def _trace_for(location, view: dict) -> dict:
-        closure = view.get("closure") if isinstance(view.get("closure"), dict) else {}
+    def _trace_for(self, location, view: dict) -> dict:
+        snapshot = self.catalog.snapshot(location.key)
+        closure = snapshot["files"].get("cierre.json", {}).get("data")
+        closure = closure if isinstance(closure, dict) else {}
         descriptor = closure.get("trace")
         run_id = closure.get("run_id")
-        return {
-            "api_version": API_VERSION,
-            "data": parse_trace(
-                _trace_bytes(location),
+        trace = parse_trace(
+                snapshot["files"].get("trazabilidad.jsonl", {}).get("raw") or b"",
                 descriptor if isinstance(descriptor, dict) else None,
                 run_id if isinstance(run_id, str) else None,
                 open_run=closure.get("state") not in (None, "complete"),
-            ),
-        }
+            )
+        relations, diagnostics = resolve_relations(trace["events"], snapshot["files"].get("review.json", {}).get("data"), location, self.catalog)
+        trace["relations"] = relations
+        trace["diagnostics"].extend(diagnostics)
+        if snapshot.get("updating"):
+            trace["chain_status"] = "updating"
+        return {"api_version": API_VERSION, "data": trace}
 
     def _require_method(self, method: str, allowed: tuple[str, ...]) -> None:
         if method not in allowed:
@@ -349,16 +361,6 @@ class ViewerServer:
         if not self.has_session(_cookie_value(headers.get("Cookie"), SESSION_COOKIE)):
             raise _RequestError(403, "session_required",
                                 "La petición necesita una sesión vigente.")
-
-
-def _trace_bytes(location) -> bytes:
-    from .paths import UnsafePathError, open_archive_file
-
-    try:
-        with open_archive_file(Path(location.path), "trazabilidad.jsonl") as handle:
-            return handle.read(8 * 1024 * 1024)
-    except (FileNotFoundError, UnsafePathError, OSError):
-        return b""
 
 
 def _cookie_value(header: str | None, name: str) -> str | None:

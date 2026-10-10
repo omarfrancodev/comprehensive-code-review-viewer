@@ -13,7 +13,7 @@ import os
 from pathlib import Path, PurePosixPath
 
 from .discovery import RunLocation, diagnostic
-from .paths import UnsafePathError, is_reparse, open_archive_file
+from .paths import UnsafePathError, is_reparse, open_archive_file, _freeze_root
 
 __all__ = [
     "file_key_for",
@@ -105,6 +105,10 @@ def list_files(location: RunLocation) -> list[dict]:
     """Devuelve el inventario de archivos regulares de una corrida."""
 
     root = Path(location.path)
+    try:
+        _freeze_root(root)
+    except (OSError, UnsafePathError):
+        return []
     entries: list[dict] = []
     for relative in _iter_regular_files(root):
         try:
@@ -252,12 +256,12 @@ def lineage_from(review: dict | None, closure: dict | None, catalog,
 
     entries: list[tuple[str, str]] = []
     if isinstance(review, dict):
-        for previous in review.get("previous_reviews") or []:
+        for previous in (review.get("previous_reviews") if isinstance(review.get("previous_reviews"), list) else []):
             if isinstance(previous, dict):
                 reference = previous.get("reference")
                 if isinstance(reference, str):
                     entries.append((reference, "previous_reviews"))
-        for row in review.get("rereview") or []:
+        for row in (review.get("rereview") if isinstance(review.get("rereview"), list) else []):
             if isinstance(row, dict):
                 reference = row.get("previous_reference")
                 if isinstance(reference, str):

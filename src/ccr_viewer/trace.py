@@ -154,11 +154,11 @@ def _temporal_key(event: Mapping[str, Any]) -> tuple:
 
     occurred = event.get("occurred_at")
     if _utc_time(occurred):
-        return (0, occurred, event.get("sequence") or 0)
+        return (0, datetime.fromisoformat(occurred.replace("Z", "+00:00")).timestamp(), event.get("sequence") or 0)
     recorded = event.get("recorded_at")
     if _utc_time(recorded):
-        return (1, recorded, event.get("sequence") or 0)
-    return (2, "", event.get("sequence") or 0)
+        return (0, datetime.fromisoformat(recorded.replace("Z", "+00:00")).timestamp(), event.get("sequence") or 0)
+    return (1, 0, event.get("sequence") or 0)
 
 
 def temporal_basis(event: Mapping[str, Any]) -> str:
@@ -450,7 +450,7 @@ def _finding_ids(review: Any) -> set[str]:
         return set()
     return {
         item["id"]
-        for item in review.get("findings") or []
+        for item in (review.get("findings") if isinstance(review.get("findings"), list) else [])
         if isinstance(item, dict) and isinstance(item.get("id"), str)
     }
 
@@ -460,7 +460,7 @@ def _check_ids(review: Any) -> set[str]:
         return set()
     return {
         item["id"]
-        for item in review.get("checks") or []
+        for item in (review.get("checks") if isinstance(review.get("checks"), list) else [])
         if isinstance(item, dict) and isinstance(item.get("id"), str)
     }
 
@@ -477,14 +477,11 @@ def resolve_relations(
     cadena de hashes en corrupción.
     """
 
-    from .references import resolve_reference
-
     seen_events = {
         event["event_id"] for event in events if isinstance(event.get("event_id"), str)
     }
     findings = _finding_ids(review)
     checks = _check_ids(review)
-    catalog_runs = {location.key: location for location in catalog.locations()}
 
     relations: list[dict] = []
     diagnostics: list[dict] = []
@@ -550,15 +547,22 @@ def resolve_relations(
                     # Destino heredado o no canónico: se conserva tal cual, sin adivinar.
                     entry["status"] = "unresolved"
                 else:
-                    entry["status"] = "external"
-                    resolved = resolve_reference(cross.group("target"), current, catalog)
-                    entry["run_key"] = resolved["run_key"]
-                    entry["file_key"] = resolved["file_key"]
-                    if entry["run_key"] is None:
-                        entry["status"] = "unavailable"
+                    matches = [loc for loc in catalog.locations()
+                               if catalog.get_run(loc.key).get("summary", {}).get("source_review_id") == "CR-" + cross.group("run")]
+                    entry["status"] = "ambiguous" if len(matches) > 1 else "unavailable"
+                    if len(matches) == 1:
+                        target_location = matches[0]
+                        target_view = catalog.get_run(target_location.key)
+                        target_snapshot = catalog.snapshot(target_location.key)
+                        target_closure = target_view.get("closure") or {}
+                        target_trace = parse_trace(target_snapshot["files"].get("trazabilidad.jsonl", {}).get("raw") or b"", target_closure.get("trace"), target_closure.get("run_id"))
+                        local_target = cross.group("target")
+                        known = {e["event_id"] for e in target_trace["events"]} | _finding_ids(target_view.get("review")) | _check_ids(target_view.get("review"))
+                        entry.update(status="resolved" if local_target in known else "unresolved", run_key=target_location.key)
+                    if entry["status"] in ("unavailable", "ambiguous", "unresolved"):
                         diagnostics.append(
                             diagnostic(
-                                "relation.cross_review_unavailable",
+                                "relation.cross_review_" + entry["status"],
                                 "info",
                                 f"El destino {target} no corresponde a una revisión "
                                 "disponible en la raíz seleccionada; no se buscan rutas "
@@ -568,5 +572,33 @@ def resolve_relations(
                         )
 
             relations.append(entry)
+
+    edges = {}
+    for relation in relations:
+        if relation["status"] == "resolved" and relation["run_key"] == current.key and _LOCAL_EVENT.match(relation["target"]):
+            edges.setdefault(relation["event_id"], []).append(relation["target"])
+    # DFS iterativo: una traza acotada puede superar el límite de recursión.
+    colors = {}
+    cycles = set()
+    for node in edges:
+        if colors.get(node):
+            continue
+        stack = [(node, iter(edges.get(node, [])))]
+        colors[node] = 1
+        while stack:
+            parent, children = stack[-1]
+            child = next(children, None)
+            if child is None:
+                colors[parent] = 2
+                stack.pop()
+            elif colors.get(child) == 1:
+                cycles.add((parent, child))
+            elif not colors.get(child):
+                colors[child] = 1
+                stack.append((child, iter(edges.get(child, []))))
+    for relation in relations:
+        if (relation["event_id"], relation["target"]) in cycles:
+            relation["status"] = "cyclic"
+            diagnostics.append(diagnostic("relation.cyclic", "warning", "Una relación declarada forma un ciclo.", "trazabilidad.jsonl"))
 
     return relations, diagnostics
