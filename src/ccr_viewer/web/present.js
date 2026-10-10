@@ -49,22 +49,32 @@ export function runTitle(summary) {
 
 /**
  * Etiqueta cada revisión y añade una pista solo cuando la etiqueta se repite.
- * La pista es el ID de origen declarado o, si falta, el inicio de la clave.
+ * La pista es el ID de origen declarado o, si falta, el inicio de la clave. Si
+ * dos filas de un mismo grupo quedaran con la misma pista, se añade el inicio
+ * de la clave y, como último recurso, se usa la clave completa.
  */
 export function labelRuns(items) {
   const titulos = (items ?? []).map((item) => ({ item, titulo: runTitle(item) }));
-  const repeticiones = new Map();
-  for (const { titulo } of titulos) {
-    repeticiones.set(titulo.label, (repeticiones.get(titulo.label) ?? 0) + 1);
+  const grupos = new Map();
+  for (const entrada of titulos) {
+    const grupo = grupos.get(entrada.titulo.label) ?? [];
+    grupo.push(entrada);
+    grupos.set(entrada.titulo.label, grupo);
   }
+  const pistas = [
+    (item) => texto(item?.source_review_id) || texto(item?.key).slice(0, 8),
+    (item) => [texto(item?.source_review_id), texto(item?.key).slice(0, 8)].filter(Boolean).join(" · "),
+    (item) => texto(item?.key),
+  ];
   const resultado = new Map();
-  for (const { item, titulo } of titulos) {
-    let hint = null;
-    if (repeticiones.get(titulo.label) > 1) {
-      const origen = texto(item?.source_review_id);
-      hint = origen || texto(item?.key).slice(0, 8) || null;
+  for (const [label, grupo] of grupos) {
+    let calculo = null;
+    if (grupo.length > 1) {
+      calculo = pistas.find((pista) => new Set(grupo.map(({ item }) => pista(item))).size === grupo.length) ?? pistas.at(-1);
     }
-    resultado.set(item?.key, { label: titulo.label, hint });
+    for (const { item } of grupo) {
+      resultado.set(item?.key, { label, hint: calculo ? calculo(item) || null : null });
+    }
   }
   return resultado;
 }
@@ -93,7 +103,18 @@ export function actorLabel(actor) {
 
 // Solo se aceptan instantes ISO 8601 con desplazamiento explícito: sin él, el
 // navegador los interpretaría en la zona local y fabricaría un instante.
-const INSTANTE = /^\d{4}-\d{2}-\d{2}[Tt ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:[Zz]|[+-]\d{2}:?\d{2})$/;
+const INSTANTE = /^(\d{4})-(\d{2})-(\d{2})[Tt ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:[Zz]|[+-](\d{2}):?(\d{2}))$/;
+
+/** `true` si los componentes son un instante de calendario real (sin desbordes). */
+function componentesReales([, anio, mes, dia, hora, minuto, segundo = "0", horaDesfase = "0", minutoDesfase = "0"]) {
+  const [a, m, d] = [anio, mes, dia].map(Number);
+  const calendario = new Date(Date.UTC(a, m - 1, d));
+  calendario.setUTCFullYear(a);
+  const fechaReal = calendario.getUTCFullYear() === a && calendario.getUTCMonth() === m - 1 && calendario.getUTCDate() === d;
+  return fechaReal
+    && Number(hora) <= 23 && Number(minuto) <= 59 && Number(segundo) <= 59
+    && Number(horaDesfase) <= 23 && Number(minutoDesfase) <= 59;
+}
 
 /** Formatea un instante sin perder el valor original; lo inválido queda sin interpretar. */
 export function formatInstant(value) {
@@ -101,10 +122,12 @@ export function formatInstant(value) {
     return { local: null, utc: null, original: null };
   }
   const original = String(value);
+  const sinInterpretar = { local: null, utc: null, original };
   const normalizado = typeof value === "string" ? value.trim().replace(" ", "T") : "";
-  if (!INSTANTE.test(normalizado)) return { local: null, utc: null, original };
+  const partes = INSTANTE.exec(normalizado);
+  if (!partes || !componentesReales(partes)) return sinInterpretar;
   const fecha = new Date(normalizado);
-  if (!Number.isFinite(fecha.getTime())) return { local: null, utc: null, original };
+  if (!Number.isFinite(fecha.getTime())) return sinInterpretar;
   return {
     local: fecha.toLocaleString("es", { dateStyle: "medium", timeStyle: "medium" }),
     utc: fecha.toISOString(),

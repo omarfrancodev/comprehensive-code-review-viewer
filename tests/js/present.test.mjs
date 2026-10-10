@@ -81,6 +81,36 @@ describe("labelRuns", () => {
     assert.equal(mapa.get("bbbbbbbb22222222").hint, "bbbbbbbb");
   });
 
+  it("distingue filas con la misma etiqueta y el mismo ID de origen", () => {
+    const mapa = labelRuns([
+      fila("aaaaaaaa11111111", { source_review_id: "rev-A" }),
+      fila("bbbbbbbb22222222", { source_review_id: "rev-A" }),
+    ]);
+    const a = mapa.get("aaaaaaaa11111111");
+    const b = mapa.get("bbbbbbbb22222222");
+    assert.notEqual(a.hint, b.hint);
+    assert.equal(a.hint, "rev-A · aaaaaaaa");
+    assert.equal(b.hint, "rev-A · bbbbbbbb");
+  });
+
+  it("usa la clave completa si el inicio de la clave tampoco distingue", () => {
+    const mapa = labelRuns([
+      fila("aaaaaaaa11111111", { source_review_id: "rev-A" }),
+      fila("aaaaaaaa22222222", { source_review_id: "rev-A" }),
+    ]);
+    assert.equal(mapa.get("aaaaaaaa11111111").hint, "aaaaaaaa11111111");
+    assert.equal(mapa.get("aaaaaaaa22222222").hint, "aaaaaaaa22222222");
+  });
+
+  it("no añade pista a una etiqueta única aunque comparta ID con otra", () => {
+    const mapa = labelRuns([
+      fila("aaaaaaaa11111111", { source_review_id: "rev-A" }),
+      { key: "cccccccc33333333", scope_label: "pr 43", scope_reference: "43", source_review_id: "rev-A" },
+    ]);
+    assert.equal(mapa.get("aaaaaaaa11111111").hint, null);
+    assert.equal(mapa.get("cccccccc33333333").hint, null);
+  });
+
   it("una etiqueta única no lleva pista", () => {
     const mapa = labelRuns([
       fila("aaaaaaaa11111111"),
@@ -144,6 +174,29 @@ describe("formatInstant", () => {
       formatInstant("2026-09-01T12:00:05"),
       { local: null, utc: null, original: "2026-09-01T12:00:05" },
     );
+  });
+
+  it("una fecha o una hora imposibles no se desbordan a otro instante", () => {
+    for (const imposible of [
+      "2026-02-31T12:00:00Z",
+      "2026-02-29T12:00:00Z",
+      "2026-04-31T12:00:00Z",
+      "2026-13-01T12:00:00Z",
+      "2026-00-10T12:00:00Z",
+      "2026-09-00T12:00:00Z",
+      "2026-09-01T25:00:00Z",
+      "2026-09-01T24:00:00Z",
+      "2026-09-01T12:60:00Z",
+      "2026-09-01T12:00:60Z",
+      "2026-09-01T12:00:00+24:00",
+      "2026-09-01T12:00:00+05:60",
+    ]) {
+      assert.deepEqual(formatInstant(imposible), { local: null, utc: null, original: imposible }, imposible);
+    }
+  });
+
+  it("acepta el 29 de febrero de un año bisiesto", () => {
+    assert.equal(formatInstant("2028-02-29T00:00:00Z").utc, "2028-02-29T00:00:00.000Z");
   });
 
   it("ausente", () => {
