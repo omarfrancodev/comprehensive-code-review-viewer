@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -10,6 +11,7 @@ import unittest
 import urllib.error
 import urllib.request
 import zipfile
+import venv
 from pathlib import Path
 
 from fixtures import build_archive
@@ -114,13 +116,22 @@ class InstalledRunTests(unittest.TestCase):
             build_archive(archivo, "final_v7")
             trabajo = base / "otro-directorio"
             trabajo.mkdir()
+            wheel = construir_wheel(base)
+            environment = base / "entorno-limpio"
+            venv.EnvBuilder(with_pip=True).create(environment)
+            interpreter = environment / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+            clean_env = {key: value for key, value in os.environ.items() if key not in {"PYTHONPATH", "PYTHONHOME"}}
+            subprocess.run([str(interpreter), "-I", "-m", "pip", "install", "--no-index", "--no-deps", str(wheel)], check=True, capture_output=True, env=clean_env)
+            module = subprocess.check_output([str(interpreter), "-I", "-c", "import ccr_viewer; print(ccr_viewer.__file__)"], cwd=trabajo, env=clean_env, text=True)
+            self.assertTrue(Path(module.strip()).resolve().is_relative_to(environment.resolve()))
 
             proceso = subprocess.Popen(
-                [sys.executable, "-m", "ccr_viewer", "--root", str(archivo), "--no-browser"],
+                [str(interpreter), "-I", "-m", "ccr_viewer", "--root", str(archivo), "--no-browser"],
                 cwd=str(trabajo),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                env=clean_env,
             )
             try:
                 url = proceso.stdout.readline().strip()
@@ -159,6 +170,7 @@ class InstalledRunTests(unittest.TestCase):
             finally:
                 proceso.terminate()
                 proceso.wait(timeout=15)
+                proceso.stdout.close()
 
 
 if __name__ == "__main__":

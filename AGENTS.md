@@ -1,6 +1,6 @@
 # Instructions for the implementation session
 
-This repository currently contains design and planning documents only. Do not claim the viewer is implemented or that product tests have passed.
+The original handoff started with design and planning documents only. Implementation now lives in the development branch. Claims about completion or passing tests require current execution evidence; consult the implementation verification report and CI for the relevant commit.
 
 ## Scope and entry points
 

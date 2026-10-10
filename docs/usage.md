@@ -94,6 +94,11 @@ esa intención.
 
 Cada hito muestra el tiempo declarado y de dónde salió:
 
+Los tiempos utilizables se presentan en la zona horaria del navegador. El detalle
+al pasar sobre el tiempo conserva el instante UTC y el valor original. El orden
+temporal compara los instantes efectivos: ocurrencia cuando está disponible,
+registro como respaldo y secuencia para eventos sin tiempo.
+
 - **ocurrencia observada**: una fuente real entregó ese instante.
 - **respaldo de registro**: no hay ocurrencia; se usa la hora de grabación.
 - **respaldo de secuencia**: no hay ningún tiempo utilizable.
@@ -120,6 +125,30 @@ hash por el calculado ni escribe en el archivo.
 Un cierre sin `schema_version` puede tener hashes válidos por archivo y aun así
 queda con estado **limitado**: los bytes se pueden verificar aunque la identidad
 del conjunto no.
+
+En la pestaña **Archivo**, «Verificar integridad» muestra cada comprobación por
+separado. Si el productor cambia los marcadores durante esa lectura, el resultado
+queda «en actualización» y se espera una versión coherente. El JSON original
+permanece consultable, incluidos los campos desconocidos.
+
+## Biblioteca y seguimiento
+
+Los filtros se aplican al servidor y vuelven a la primera página. Se pueden
+combinar repositorio, modo, referencia, tipo, perfil, veredicto, fecha de creación
+y estado abierto/cerrado (`true`/`false`). Las fechas Desde/Hasta son inclusivas
+y usan el día declarado en la creación de la fuente; una fecha desconocida no
+coincide con un filtro de fechas. Cada página contiene hasta 50 corridas.
+
+La primera observación no demuestra actividad reciente. «Último registro» viene
+del productor; «Último cambio detectado por el visor» es la hora en que el visor
+observó un cambio posterior. El estado de conexión del seguimiento se muestra
+aparte del estado de la corrida. Las interrupciones sólo se indican si existe un
+hito explícito y dejan de ser actuales al observar trabajo posterior.
+
+Los avisos SSE recargan la revisión seleccionada al aparecer el registro final,
+sin restablecer la pestaña ni el cursor pausado. El contador de la reproducción
+cuenta IDs nuevos de la traza, no avisos de red. Seguimiento conserva títulos,
+IDs históricos, aliases y referencias anteriores.
 
 ## Atajos de teclado
 

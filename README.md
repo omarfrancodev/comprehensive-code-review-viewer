@@ -56,12 +56,12 @@ y en [contracts/sources.md](contracts/sources.md).
 
 ## Estado
 
-La implementación está **completa y verificada** en este repositorio: el backend,
-la interfaz, las pruebas de navegador y el empaquetado se comprueban en la
-integración continua. Esto **no es una publicación**: la licencia del proyecto
-sigue sin decidir por su propietario, y ni la fusión ni la publicación requieren
-declararse. Ver el estado de la rama de desarrollo antes de asumir cualquier
-lanzamiento.
+La implementación cuenta con pruebas de backend, interfaz, navegador y
+empaquetado. Las correcciones y la evidencia de la validación se documentan en
+[el informe de implementación](docs/superpowers/reviews/2026-10-10-implementation-verification.md).
+La rama se presenta mediante PR para revisión del propietario. La fusión y la
+publicación requieren su autorización; la licencia del proyecto sigue pendiente
+de decisión antes de una distribución pública.
 
 ## Proyecto relacionado
 
