@@ -120,17 +120,75 @@ test.describe("ruta local", () => {
     expect(busqueda(page)).toBe("");
   });
 
-  test("una clave bien formada pero ausente avisa y no queda seleccionada", async ({ page }) => {
+  test("una clave bien formada pero ausente (404 unknown_id) avisa y no queda seleccionada", async ({ page }) => {
     await openFixture(page);
     const ausente = "b".repeat(32);
     await page.route(`**/api/runs/${ausente}`, (ruta) =>
-      responder(ruta, { api_version: 1, error: { code: "run_not_found", message: "Revisión no encontrada." } }, 404),
+      responder(ruta, { api_version: 1, error: { code: "unknown_id", message: "Identificador de corrida desconocido." } }, 404),
     );
     await page.goto(`/?run=${ausente}&tab=archivo#token=token-sintetico`);
     await expect(page.locator("#revision")).toContainText("no corresponde a una revisión disponible");
     await expect(page.getByRole("tab")).toHaveCount(0);
     await expect(page.locator("#biblioteca .lista-revisiones button")).toHaveCount(1);
     await expect.poll(() => busqueda(page)).toBe("");
+  });
+
+  for (const [status, code, mensaje] of [
+    [500, "read_failed", "Lectura sintética fallida del archivo."],
+    [403, "session_required", "Sesión sintética caducada."],
+  ]) {
+    test(`un fallo ${status} ${code} al abrir por ruta conserva la URL y muestra su mensaje real`, async ({ page }) => {
+      await openFixture(page);
+      const clave = "c".repeat(32);
+      await page.route(`**/api/runs/${clave}`, (ruta) =>
+        responder(ruta, { api_version: 1, error: { code, message: mensaje } }, status),
+      );
+      await page.goto(`/?run=${clave}&tab=archivo#token=token-sintetico`);
+      await expect(page.locator("#revision")).toContainText(mensaje);
+      await expect(page.locator("#revision")).not.toContainText("no corresponde a una revisión disponible");
+      await expect(page.locator("#anunciador")).not.toContainText("no corresponde a una revisión disponible");
+      expect(busqueda(page)).toBe(`?run=${clave}&tab=archivo`);
+      await expect(pestana(page, "Archivo")).toHaveAttribute("aria-selected", "true");
+    });
+  }
+
+  test("la clave de la URL deja de estar pendiente si la selección cambia antes de resolverse", async ({ page }) => {
+    await openFixture(page);
+    const otra = "d".repeat(32);
+    const resumenOtra = { ...REVISION_SINTETICA.summary, key: otra, scope_label: "pr 43" };
+    await page.route("**/api/runs?*", (ruta) =>
+      responder(ruta, { api_version: 1, data: { items: [REVISION_SINTETICA.summary, resumenOtra], total: 2, offset: 0, limit: 50, truncated: false } }),
+    );
+    // La primera lectura de `otra` (la de la ruta) queda retenida hasta que la
+    // prueba la libera. La segunda, de un clic normal, responde 404: aunque sea
+    // una corrida ausente, ya no viene de la URL y no debe vaciar la selección.
+    let liberar;
+    const retenida = new Promise((resolver) => { liberar = resolver; });
+    let lecturas = 0;
+    await page.route(`**/api/runs/${otra}`, async (ruta) => {
+      lecturas += 1;
+      if (lecturas === 1) {
+        await retenida;
+        await responder(ruta, { api_version: 1, error: { code: "read_failed", message: "Lectura retenida sintética." } }, 500);
+        return;
+      }
+      await responder(ruta, { api_version: 1, error: { code: "unknown_id", message: "Fallo sintético tras la selección." } }, 404);
+    });
+    await page.goto(`/?run=${otra}#token=token-sintetico`);
+    await expect.poll(() => lecturas).toBe(1);
+    await page.locator(`.lista-revisiones button[data-key="${CLAVE}"]`).click();
+    await expect(page.locator("#revision")).toContainText("Revisión sintética de validación");
+    const tardia = page.waitForResponse((respuesta) => respuesta.url().endsWith(`/api/runs/${otra}`));
+    liberar();
+    await tardia;
+    // La respuesta tardía de la ruta se descarta; después, un clic normal en
+    // `otra` que falla no se clasifica como una ruta ausente.
+    await expect(page.locator("#revision")).toContainText("Revisión sintética de validación");
+    await page.locator(`.lista-revisiones button[data-key="${otra}"]`).click();
+    await expect(page.locator("#revision")).toContainText("Fallo sintético tras la selección.");
+    await expect(pestana(page, "Resumen")).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#revision")).not.toContainText("no corresponde a una revisión disponible");
+    expect(busqueda(page)).toBe(`?run=${otra}&tab=ficha`);
   });
 
   test("el hito seleccionado viaja en la URL con replaceState y se restaura al recargar", async ({ page }) => {

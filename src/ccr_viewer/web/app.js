@@ -53,6 +53,9 @@ let avisoHito = null;
 let rutaPendiente = null;
 let restaurando = false;
 let historialListo = false;
+// Último fallo al leer la revisión seleccionada: el panel lo muestra aunque
+// una recarga posterior de la biblioteca limpie `error` del store.
+let errorRevision = null;
 
 const raizDocumento = document.documentElement;
 const shell = mountShell(document);
@@ -160,7 +163,11 @@ function dibujarRevision() {
     return;
   }
   if (!estado.view) {
-    revisionNodo.append(elemento("p", { clase: "estado", texto: "Cargando la revisión…" }));
+    if (errorRevision?.key === estado.selectedRun) {
+      revisionNodo.append(elemento("p", { clase: "estado estado--error", texto: `No se pudo cargar la revisión: ${errorRevision.message}` }));
+    } else {
+      revisionNodo.append(elemento("p", { clase: "estado", texto: "Cargando la revisión…" }));
+    }
     return;
   }
   const actual = PESTANAS.find((p) => p.id === estado.tab) ?? PESTANAS[0];
@@ -234,20 +241,30 @@ async function cargarRevision(clave) {
     const vista = await getRun(clave);
     if (requestId !== revisionRequest || store.getState().selectedRun !== clave) return;
     if (rutaPendiente === clave) rutaPendiente = null;
+    if (errorRevision?.key === clave) errorRevision = null;
     store.dispatch({ type: "viewLoaded", view: vista });
   } catch (error) {
     if (requestId !== revisionRequest || store.getState().selectedRun !== clave) return;
-    if (rutaPendiente === clave) {
+    if (rutaPendiente === clave && esRevisionAusente(error)) {
       // Una clave de la URL que no existe: aviso y selección segura, sin
-      // buscar otra revisión parecida.
+      // buscar otra revisión parecida. Cualquier otro fallo conserva la
+      // selección, la URL y su mensaje real.
       rutaPendiente = null;
       avisarRuta();
       sinHistorial(() => store.dispatch({ type: "selectRun", key: null }));
       reemplazarRuta();
       return;
     }
+    if (rutaPendiente === clave) rutaPendiente = null;
+    errorRevision = { key: clave, message: error.message };
     store.dispatch({ type: "setError", error: error.message });
+    if (!store.getState().view) dibujarRevision();
   }
+}
+
+/** Solo un 404 `unknown_id` significa que la corrida no existe. */
+function esRevisionAusente(error) {
+  return error?.status === 404 && error?.code === "unknown_id";
 }
 
 /** Último segmento de la raíz para la etiqueta compacta; el detalle muestra la ruta completa. */
@@ -392,6 +409,9 @@ async function iniciar() {
     if (estado.selectedRun !== previousKey) {
       previousKey = estado.selectedRun;
       desplazamiento = 0;
+      // La clave de la URL deja de estar pendiente si la selección se mueve.
+      if (rutaPendiente && rutaPendiente !== previousKey) rutaPendiente = null;
+      errorRevision = null;
       if (previousKey) avisoRuta = null;
       void cargarRevision(previousKey);
     }
