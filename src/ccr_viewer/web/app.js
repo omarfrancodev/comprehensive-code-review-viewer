@@ -5,10 +5,13 @@ import {
   getConfig,
   getRun,
   getRuns,
+  getTrace,
   subscribeNotices,
 } from "./api.js";
 import { createStore } from "./store.js";
 import { renderDocuments } from "./documents.js";
+import { renderLifecycle } from "./lifecycle.js";
+import { createPlayback } from "./playback.js";
 import { renderFindings, renderLibrary, renderProfile, renderValidation } from "./views.js";
 import { elemento } from "./dom.js";
 
@@ -17,7 +20,14 @@ const PESTANAS = [
   { id: "hallazgos", etiqueta: "Hallazgos", render: renderFindings },
   { id: "validacion", etiqueta: "Validación", render: renderValidation },
   { id: "documentos", etiqueta: "Documentos", render: null },
+  { id: "trazabilidad", etiqueta: "Trazabilidad", render: null },
 ];
+
+let repeticion = null;
+let ultimaTraza = null;
+// El desplazamiento se guarda aparte: despachar en cada evento de scroll
+// redibujaría la pantalla entera y perdería el foco de los controles.
+let desplazamiento = 0;
 
 const store = createStore();
 const bibliotecaNodo = document.getElementById("biblioteca");
@@ -70,7 +80,7 @@ function dibujarRevision() {
   const actual = PESTANAS.find((p) => p.id === estado.tab) ?? PESTANAS[0];
   if (actual.render) {
     actual.render(revisionNodo, estado.view);
-  } else {
+  } else if (actual.id === "documentos") {
     // Los documentos cargan su inventario bajo demanda.
     revisionNodo.append(elemento("p", { clase: "estado", texto: "Cargando documentos…" }));
     void renderDocuments(revisionNodo, estado.view).catch((error) => {
@@ -78,6 +88,26 @@ function dibujarRevision() {
         elemento("p", { clase: "estado estado--error", texto: `No se pudieron cargar los documentos: ${error.message}` }),
       );
     });
+  } else {
+    // La trazabilidad se interpreta antes de mostrarse.
+    revisionNodo.append(elemento("p", { clase: "estado", texto: "Cargando trazabilidad…" }));
+    void getTrace(estado.selectedRun)
+      .then((traza) => {
+        if (store.getState().tab !== actual.id) return;
+        if (!repeticion || ultimaTraza !== estado.selectedRun) {
+          ultimaTraza = estado.selectedRun;
+          repeticion?.destroy();
+          repeticion = createPlayback(traza.events ?? []);
+        } else {
+          repeticion.ingest(traza);
+        }
+        renderLifecycle(revisionNodo, traza, repeticion);
+      })
+      .catch((error) => {
+        revisionNodo.replaceChildren(
+          elemento("p", { clase: "estado estado--error", texto: `No se pudo leer la trazabilidad: ${error.message}` }),
+        );
+      });
   }
   if (estado.newEventCount > 0) {
     revisionNodo.append(
@@ -130,7 +160,7 @@ function dibujar() {
   dibujarRevision();
   dibujarAvisos(estado);
   // La selección y el desplazamiento se restauran tras cada redibujo.
-  if (estado.scrollTop) window.scrollTo(0, estado.scrollTop);
+  if (desplazamiento) window.scrollTo(0, desplazamiento);
 }
 
 async function iniciar() {
@@ -158,7 +188,14 @@ async function iniciar() {
   subscribeNotices(
     (notice) => {
       store.dispatch({ type: "notice", notice });
-      if (notice.kind === "catalog_changed" || notice.kind === "resync") void cargarBiblioteca();
+      if (notice.kind === "catalog_changed" || notice.kind === "resync") {
+        void cargarBiblioteca();
+      } else if (notice.kind === "run_changed" && repeticion && store.getState().tab === "trazabilidad") {
+        void getTrace(store.getState().selectedRun).then((traza) => {
+          repeticion.ingest(traza);
+          dibujar();
+        });
+      }
     },
     () => {},
   );
@@ -167,7 +204,8 @@ async function iniciar() {
 }
 
 window.addEventListener("scroll", () => {
-  store.dispatch({ type: "setScroll", scrollTop: window.scrollY });
+  desplazamiento = window.scrollY;
+  store.getState().scrollTop = desplazamiento;
 });
 
 iniciar();

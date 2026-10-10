@@ -508,3 +508,86 @@ body {
 .vista-previa {
   margin-top: 0.4rem;
 }
+
+/* --- Trazabilidad y reproducción ------------------------------------- */
+
+.reproduccion {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.control {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--borde);
+  border-radius: 4px;
+  background: var(--fondo);
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.control:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+}
+
+.hitos,
+.orden-temporal,
+.relaciones {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.orden-temporal {
+  padding-left: 1.2rem;
+  list-style: decimal;
+  font-size: 0.85rem;
+}
+
+.hito {
+  border: 1px solid var(--borde);
+  border-radius: 4px;
+  padding: 0.45rem 0.6rem;
+  background: var(--fondo);
+  cursor: pointer;
+}
+
+.hito--seleccionado {
+  border-color: var(--acento);
+  box-shadow: inset 3px 0 0 var(--acento);
+}
+
+.hito-cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: baseline;
+}
+
+.hito-resumen {
+  color: var(--texto-suave);
+  font-size: 0.88rem;
+}
+
+.hito-meta {
+  margin-top: 0.3rem;
+  font-size: 0.82rem;
+}
+
+.relacion {
+  border-left: 3px solid var(--borde);
+  padding-left: 0.5rem;
+  font-size: 0.88rem;
+}
+
+.relacion--dangling,
+.relacion--unresolved {
+  border-left-color: var(--error);
+}
