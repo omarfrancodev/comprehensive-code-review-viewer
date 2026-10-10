@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Pruebas de desarrollo del visor web de Comprehensive Code Review.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "scripts": {
     "test:js": "node --test tests/js",
     "test:browser": "playwright test",
