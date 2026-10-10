@@ -476,50 +476,221 @@ input[type="range"] {
   color: var(--error);
 }
 
-/* --- Biblioteca (lista actual; la Tarea 3 la compacta) ----------------- */
+/* --- Biblioteca --------------------------------------------------------- */
 
-.lista-revisiones {
+/* Todo hijo se contiene en el ancho de la columna; IDs y URLs largos se
+   abrevian solo en la etiqueta compacta (su `title` y «Ver detalle» los
+   conservan completos). */
+.biblioteca {
   display: grid;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.grupo-revisiones h3 {
-  margin: var(--espacio-2) 0 0;
-  color: var(--texto-suave);
-  font-size: var(--tam-meta);
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--separacion);
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.filtros {
+.biblioteca > *,
+.biblioteca-barra > * {
+  min-width: 0;
+}
+
+.biblioteca-barra {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--espacio-2);
-  margin-bottom: var(--espacio-3);
 }
 
-.filtro {
+.biblioteca-busqueda input {
+  width: 100%;
+}
+
+.biblioteca-rapidos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--espacio-2);
+}
+
+.chips-rapidos {
+  display: inline-flex;
+  gap: var(--espacio-1);
+}
+
+.chip-rapido,
+.filtros-boton {
+  border-radius: var(--radio-3);
+}
+
+.chip-rapido[aria-pressed="true"],
+.filtros-boton[aria-expanded="true"] {
+  border-color: var(--acento);
+  background: var(--acento-suave);
+  font-weight: 600;
+}
+
+.chip-rapido[aria-pressed="true"]:hover:not(:disabled),
+.filtros-boton[aria-expanded="true"]:hover:not(:disabled) {
+  background: var(--acento-suave);
+}
+
+.filtros-avanzados {
   display: grid;
-  gap: 2px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--espacio-3);
+  padding: var(--espacio-3);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-2);
+  background: var(--fondo);
 }
 
-.filtro label {
+.filtro-campo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--espacio-1);
+  min-width: 0;
+}
+
+.filtro-campo label {
   color: var(--texto-suave);
   font-size: var(--tam-meta);
 }
 
-.filtro-botones,
-.paginacion {
+.filtro-campo input,
+.filtro-campo select {
+  width: 100%;
+  min-width: 0;
+}
+
+.filtro-campo .nota {
+  margin: 0;
+  font-size: var(--tam-pequeno);
+}
+
+.filtro-error {
+  margin: 0;
+  color: var(--error);
+  font-size: var(--tam-meta);
+}
+
+.filtro-botones {
   display: flex;
   flex-wrap: wrap;
   gap: var(--espacio-2);
 }
 
+.boton-primario {
+  border-color: var(--acento);
+  background: var(--acento);
+  color: var(--acento-contraste);
+  font-weight: 600;
+}
+
+.boton-primario:hover:not(:disabled) {
+  background: var(--acento);
+  filter: brightness(1.1);
+}
+
+.filtros-aplicados {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--espacio-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  border: 1px solid var(--borde-control);
+  border-radius: var(--radio-3);
+  background: var(--superficie);
+  font-size: var(--tam-meta);
+}
+
+.chip-texto {
+  min-width: 0;
+  padding: 0 var(--espacio-1) 0 var(--espacio-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip-quitar {
+  min-height: 24px;
+  border: 0;
+  border-radius: var(--radio-3);
+  background: transparent;
+  line-height: 1;
+}
+
+.filtros-limpiar {
+  justify-self: start;
+}
+
+.biblioteca-lista:focus {
+  outline: none;
+}
+
+.estado-bloque {
+  display: grid;
+  gap: var(--espacio-2);
+  justify-items: start;
+}
+
+.estado-bloque > p {
+  margin: 0;
+}
+
+.estado-bloque--desactualizada {
+  margin-bottom: var(--espacio-3);
+  padding: var(--espacio-2) var(--espacio-3);
+  border: 1px solid var(--aviso);
+  border-radius: var(--radio-2);
+}
+
+.lista-revisiones,
+.grupo-filas {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--espacio-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lista-revisiones {
+  gap: var(--espacio-3);
+}
+
+.grupo-revisiones h3 {
+  margin: 0 0 var(--espacio-1);
+  overflow: hidden;
+  color: var(--texto-suave);
+  font-size: var(--tam-meta);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grupo-revisiones,
+.revision-fila {
+  min-width: 0;
+}
+
+.revision-fila {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .revision {
   display: grid;
-  gap: var(--espacio-1);
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
   width: 100%;
+  min-width: 0;
   padding: var(--espacio-2) var(--espacio-3);
   border: 1px solid var(--borde);
   border-radius: var(--radio-1);
@@ -528,18 +699,44 @@ input[type="range"] {
 }
 
 .revision > span {
-  display: block;
+  min-width: 0;
 }
 
-.revision-alcance {
+.revision-titulo,
+.revision-pista {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.revision-titulo {
   font-weight: 600;
 }
 
-.revision-repo,
-.revision-estado {
+.revision-pista {
+  color: var(--texto-suave);
+  font-family: var(--fuente-mono);
+  font-size: var(--tam-pequeno);
+}
+
+.revision-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--espacio-2);
   color: var(--texto-suave);
   font-size: var(--tam-meta);
-  overflow-wrap: anywhere;
+}
+
+.revision > .marca {
+  justify-self: start;
+}
+
+.revision-meta > * {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .revision--activa {
@@ -550,6 +747,61 @@ input[type="range"] {
 
 .revision--activa:hover:not(:disabled) {
   background: var(--acento-suave);
+}
+
+.revision-detalle {
+  padding: 0 var(--espacio-3);
+  font-size: var(--tam-meta);
+}
+
+.revision-detalle > summary {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  color: var(--texto-suave);
+  cursor: pointer;
+}
+
+.revision-campos {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--espacio-1);
+  margin: 0 0 var(--espacio-2);
+}
+
+.revision-campos .campo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.revision-campos dt {
+  color: var(--texto-suave);
+  font-size: var(--tam-pequeno);
+}
+
+.revision-campos dd {
+  margin: 0;
+  font-family: var(--fuente-mono);
+  overflow-wrap: anywhere;
+}
+
+.paginacion {
+  display: grid;
+  gap: var(--espacio-2);
+}
+
+.paginacion-botones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--espacio-2);
+}
+
+.biblioteca-resumen,
+.biblioteca-limitaciones {
+  margin: 0;
+  color: var(--texto-suave);
+  font-size: var(--tam-meta);
 }
 
 /* --- Vistas de la revisión --------------------------------------------- */

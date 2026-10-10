@@ -159,6 +159,98 @@ describe("shell: preferencias, selección y conexión", () => {
   });
 });
 
+describe("biblioteca: filtros, paginación y fallos de recarga", () => {
+  const pagina = (n, extra = {}) => ({
+    items: Array.from({ length: n }, (_, i) => ({ key: `k${i}` })),
+    total: n,
+    offset: 0,
+    limit: 50,
+    ...extra,
+  });
+
+  it("libraryFailed conserva library.items y marca libraryStale", () => {
+    const store = createStore();
+    store.dispatch({ type: "libraryLoaded", library: pagina(2), offset: 0 });
+    const antes = store.getState().library;
+    store.dispatch({ type: "libraryFailed", error: "sin red" });
+    const estado = store.getState();
+    assert.equal(estado.library, antes);
+    assert.equal(estado.library.items.length, 2);
+    assert.equal(estado.libraryStale, true);
+    assert.equal(estado.libraryError, "sin red");
+    assert.equal(estado.loading, false);
+    assert.equal(estado.libraryReady, true);
+  });
+
+  it("libraryLoaded limpia libraryStale y el error de la biblioteca", () => {
+    const store = createStore();
+    store.dispatch({ type: "libraryFailed", error: "sin red" });
+    assert.equal(store.getState().libraryReady, false, "un fallo sin carga previa no la da por lista");
+    store.dispatch({ type: "libraryLoaded", library: pagina(1), offset: 0 });
+    const estado = store.getState();
+    assert.equal(estado.libraryStale, false);
+    assert.equal(estado.libraryError, null);
+    assert.equal(estado.libraryReady, true);
+  });
+
+  it("un error de revisión (setError) no toca la biblioteca", () => {
+    const store = createStore();
+    store.dispatch({ type: "libraryLoaded", library: pagina(1), offset: 0 });
+    const antes = store.getState();
+    store.dispatch({ type: "setError", error: "lectura fallida" });
+    const estado = store.getState();
+    assert.equal(estado.library, antes.library);
+    assert.equal(estado.libraryStale, false);
+    assert.equal(estado.libraryError, null);
+  });
+
+  it("setFilters reinicia offset a 0 y normaliza", () => {
+    const store = createStore({ offset: 100 });
+    store.dispatch({ type: "setFilters", filters: { q: " a ", verdict: "" } });
+    assert.deepEqual(store.getState().filters, { q: "a" });
+    assert.equal(store.getState().offset, 0);
+  });
+
+  it("setFilters idénticos no cambian el estado ni la página", () => {
+    const store = createStore({ filters: { q: "a" }, offset: 50 });
+    const antes = store.getState();
+    store.dispatch({ type: "setFilters", filters: { q: "a " } });
+    assert.equal(store.getState(), antes);
+  });
+
+  it("resetFilters limpia filtros y offset; sin filtros ni página no cambia", () => {
+    const store = createStore({ filters: { q: "a" }, offset: 50 });
+    store.dispatch({ type: "resetFilters" });
+    assert.deepEqual(store.getState().filters, {});
+    assert.equal(store.getState().offset, 0);
+    const antes = store.getState();
+    store.dispatch({ type: "resetFilters" });
+    assert.equal(store.getState(), antes);
+  });
+
+  it("setOffset con el mismo valor no cambia el estado", () => {
+    const store = createStore({ offset: 50 });
+    const antes = store.getState();
+    store.dispatch({ type: "setOffset", offset: 50 });
+    assert.equal(store.getState(), antes);
+    store.dispatch({ type: "setOffset", offset: 0 });
+    assert.equal(store.getState().offset, 0);
+  });
+
+  it("libraryLoaded acerca el offset a la última página existente", () => {
+    const store = createStore({ offset: 100 });
+    store.dispatch({ type: "libraryLoaded", library: { items: [], total: 51, offset: 100, limit: 50 }, offset: 100 });
+    assert.equal(store.getState().offset, 50);
+  });
+
+  it("retryLibrary incrementa el contador de reintentos explícitos", () => {
+    const store = createStore();
+    store.dispatch({ type: "retryLibrary" });
+    store.dispatch({ type: "retryLibrary" });
+    assert.equal(store.getState().libraryRetry, 2);
+  });
+});
+
 describe("reduce", () => {
   it("acumula los avisos nuevos sin duplicar por cursor", () => {
     let state = reduce({ newEventCount: 0 }, { type: "notice", notice: { kind: "run_changed" } });

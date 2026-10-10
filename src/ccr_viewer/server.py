@@ -52,6 +52,7 @@ STATIC_RESOURCES = {
     "dom.js": "text/javascript; charset=utf-8",
     "views.js": "text/javascript; charset=utf-8",
     "library.js": "text/javascript; charset=utf-8",
+    "filters.js": "text/javascript; charset=utf-8",
     "profile.js": "text/javascript; charset=utf-8",
     "findings.js": "text/javascript; charset=utf-8",
     "validation.js": "text/javascript; charset=utf-8",

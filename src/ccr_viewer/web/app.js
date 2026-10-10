@@ -15,7 +15,7 @@ import { createStore } from "./store.js";
 import { renderDocuments } from "./documents.js";
 import { renderLifecycle } from "./lifecycle.js";
 import { createPlayback } from "./playback.js";
-import { renderFindings, renderLibrary, renderProfile, renderValidation, renderHistory, renderArchive } from "./views.js";
+import { mountLibrary, renderFindings, renderProfile, renderValidation, renderHistory, renderArchive } from "./views.js";
 import { campo, elemento, listaDefinitiva } from "./dom.js";
 import { applyPrefs, loadPrefs, savePrefs } from "./prefs.js";
 import { buildRoute, parseRoute } from "./route.js";
@@ -64,6 +64,7 @@ const raizBoton = document.getElementById("raiz");
 const temaNodo = document.getElementById("tema");
 
 const store = createStore({ prefs: loadPrefs() });
+const biblioteca = mountLibrary(bibliotecaNodo, { getState: store.getState, dispatch: store.dispatch });
 applyPrefs(raizDocumento, store.getState().prefs);
 if (temaNodo) temaNodo.value = store.getState().prefs.theme;
 
@@ -230,7 +231,8 @@ async function cargarBiblioteca() {
     store.dispatch({ type: "libraryLoaded", library: pagina, offset: estado.offset });
   } catch (error) {
     if (requestId !== libraryRequest) return;
-    store.dispatch({ type: "setError", error: error.message });
+    // Un fallo de recarga conserva la última lista y la marca como no actualizada.
+    store.dispatch({ type: "libraryFailed", error: error.message });
   }
 }
 
@@ -275,7 +277,7 @@ function nombreBase(ruta) {
 
 function dibujar() {
   const estado = store.getState();
-  if (!renderedState || renderedState.library !== estado.library || renderedState.filters !== estado.filters || renderedState.selectedRun !== estado.selectedRun || renderedState.error !== estado.error) renderLibrary(bibliotecaNodo, estado, store.dispatch);
+  biblioteca.update(estado);
   if (estado.config && renderedState?.config !== estado.config) {
     raizBoton.querySelector(".raiz-etiqueta").textContent = nombreBase(estado.config.root);
   }
@@ -404,6 +406,7 @@ async function iniciar() {
   suscribirPreferencias();
   let previousFilters = store.getState().filters;
   let previousOffset = store.getState().offset;
+  let previousRetry = store.getState().libraryRetry;
   let previousKey = store.getState().selectedRun;
   store.subscribe((estado) => {
     if (estado.selectedRun !== previousKey) {
@@ -415,9 +418,10 @@ async function iniciar() {
       if (previousKey) avisoRuta = null;
       void cargarRevision(previousKey);
     }
-    if (estado.filters !== previousFilters || estado.offset !== previousOffset) {
+    if (estado.filters !== previousFilters || estado.offset !== previousOffset || estado.libraryRetry !== previousRetry) {
       previousFilters = estado.filters;
       previousOffset = estado.offset;
+      previousRetry = estado.libraryRetry;
       void cargarBiblioteca();
     }
   });
@@ -425,6 +429,7 @@ async function iniciar() {
     await bootstrapSession(location.hash);
   } catch (error) {
     store.dispatch({ type: "setError", error: error.message });
+    store.dispatch({ type: "libraryFailed", error: error.message });
     return;
   }
   try {

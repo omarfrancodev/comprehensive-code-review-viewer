@@ -5,7 +5,7 @@
  * un único punto estable en lugar de conocer el mapa de archivos.
  */
 
-export { renderLibrary } from "./library.js";
+export { mountLibrary } from "./library.js";
 export { renderProfile } from "./profile.js";
 export { renderFindings } from "./findings.js";
 export { renderValidation } from "./validation.js";

@@ -33,9 +33,9 @@ test("filtrar y limpiar solicitan una página nueva", async ({ page }) => {
     queries.push(query.get("q"));
     return respond(route, { items: query.has("q") ? [] : [REVISION_SINTETICA.summary], total: query.has("q") ? 0 : 1 });
   });
-  await page.locator('[name="q"]').fill("ausente");
-  await page.getByRole("button", { name: "Filtrar", exact: true }).click();
-  await expect(page.locator("#biblioteca")).toContainText("Sin revisiones");
+  await page.getByRole("searchbox", { name: "Buscar revisiones" }).fill("ausente");
+  await page.getByRole("searchbox", { name: "Buscar revisiones" }).press("Enter");
+  await expect(page.locator("#biblioteca")).toContainText("Ninguna revisión coincide");
   expect(queries).toContain("ausente");
   await page.getByRole("button", { name: "Limpiar", exact: true }).click();
   await expect(page.locator(".lista-revisiones button")).toHaveCount(1);
