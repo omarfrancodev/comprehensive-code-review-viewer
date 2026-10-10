@@ -41,7 +41,7 @@ test("establece la sesión con el token del fragmento", async ({ page }) => {
 test("navega la biblioteca y abre una revisión", async ({ page }) => {
   await expect(page.locator("#biblioteca")).toContainText("cerrada");
   await page.locator(".lista-revisiones button").first().click();
-  await expect(page.locator("#revision header.revision-encabezado h2")).toHaveText(
+  await expect(page.locator("#cabecera-revision header.revision-encabezado h2")).toHaveText(
     "Revisión sintética de validación de entrada",
   );
   await expect(page.locator("#revision")).toContainText("CR-1111111111111111aaaa");

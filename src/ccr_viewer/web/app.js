@@ -15,7 +15,15 @@ import { createStore } from "./store.js";
 import { renderDocuments } from "./documents.js";
 import { renderLifecycle } from "./lifecycle.js";
 import { createPlayback } from "./playback.js";
-import { mountLibrary, renderFindings, renderProfile, renderValidation, renderHistory, renderArchive } from "./views.js";
+import {
+  mountLibrary,
+  renderArchive,
+  renderFindings,
+  renderHistory,
+  renderProfile,
+  renderRunHeader,
+  renderValidation,
+} from "./views.js";
 import { campo, elemento, listaDefinitiva } from "./dom.js";
 import { applyPrefs, loadPrefs, savePrefs } from "./prefs.js";
 import { buildRoute, parseRoute } from "./route.js";
@@ -28,7 +36,8 @@ const PESTANAS = [
   { id: "seguimiento", etiqueta: "Seguimiento", render: renderHistory },
   { id: "documentos", etiqueta: "Documentos", render: null },
   { id: "trazabilidad", etiqueta: "Trazabilidad", render: null },
-  { id: "archivo", etiqueta: "Archivo", render: renderArchive },
+  // `render` recibe `dispatch` como tercer argumento: el Archivo no lo usa.
+  { id: "archivo", etiqueta: "Archivo", render: (contenedor, view) => renderArchive(contenedor, view) },
 ];
 
 const AVISO_RUTA = "La dirección no corresponde a una revisión disponible; no se seleccionó ninguna.";
@@ -45,6 +54,8 @@ let revisionRequest = 0;
 let libraryRequest = 0;
 let disposeLifecycle = null;
 let renderedState = null;
+// Vista con la que se dibujó la cabecera: no se repinta si no cambia.
+let cabeceraVista = null;
 
 // Navegación local: aviso visible de la ruta, clave cuya carga viene de la
 // URL o del historial, y bandera para no escribir historial al restaurarlo.
@@ -61,7 +72,7 @@ let errorConfiguracion = null;
 
 const raizDocumento = document.documentElement;
 const shell = mountShell(document);
-const { library: bibliotecaNodo, content: revisionNodo, tabs: barraNodo } = shell.regions;
+const { library: bibliotecaNodo, content: revisionNodo, tabs: barraNodo, header: cabeceraNodo } = shell.regions;
 const raizBoton = document.getElementById("raiz");
 const temaNodo = document.getElementById("tema");
 
@@ -125,6 +136,23 @@ function sincronizarPestanas(estado) {
   }
 }
 
+/**
+ * Cabecera de la revisión sobre el panel, común a todas las pestañas. Un
+ * fallo al dibujarla la deja vacía: nunca impide ver la vista seleccionada.
+ */
+function dibujarCabecera(vista) {
+  if (vista === cabeceraVista) return;
+  cabeceraVista = vista;
+  const conFoco = cabeceraNodo.contains(document.activeElement)
+    && document.activeElement?.classList.contains("copiar-id");
+  try {
+    renderRunHeader(cabeceraNodo, vista);
+  } catch {
+    cabeceraNodo.replaceChildren();
+  }
+  if (conFoco) cabeceraNodo.querySelector(".copiar-id")?.focus();
+}
+
 /** Enlaza la reproducción con el hito del store sin reproducir nada. */
 function enlazarRepeticion(control) {
   const objetivo = store.getState().selectedEventId;
@@ -156,6 +184,7 @@ function dibujarRevision() {
     ultimaTraza = estado.selectedRun;
   }
   sincronizarPestanas(estado);
+  dibujarCabecera(estado.selectedRun ? estado.view : null);
   revisionNodo.replaceChildren();
   if (!estado.selectedRun) {
     if (avisoRuta) revisionNodo.append(elemento("p", { clase: "estado estado--aviso", texto: avisoRuta }));

@@ -19,7 +19,7 @@ test.describe("ficha, hallazgos y validación", () => {
   test("la ficha conserva los valores de la fuente", async ({ page }) => {
     await page.locator(".lista-revisiones button").first().click();
     const ficha = page.locator("#revision");
-    await expect(ficha.locator("header.revision-encabezado h2")).toHaveText("Revisión sintética de validación");
+    await expect(page.locator("#cabecera-revision header.revision-encabezado h2")).toHaveText("Revisión sintética de validación");
     await expect(ficha).toContainText("CR-1111111111111111aaaa");
     await expect(ficha).toContainText("approvable_with_reservations");
     await expect(ficha).toContainText("extended");
@@ -53,14 +53,14 @@ test.describe("ficha, hallazgos y validación", () => {
     const boton = page.locator(".lista-revisiones button").first();
     await boton.focus();
     await page.keyboard.press("Enter");
-    await expect(page.locator("#revision header.revision-encabezado h2")).toHaveText("Revisión sintética de validación");
+    await expect(page.locator("#cabecera-revision header.revision-encabezado h2")).toHaveText("Revisión sintética de validación");
   });
 
   test("funciona a 375 px y a 900 px de ancho", async ({ page }) => {
     for (const ancho of [375, 900]) {
       await page.setViewportSize({ width: ancho, height: 800 });
       await page.locator(".lista-revisiones button").first().click();
-      await expect(page.locator("#revision header.revision-encabezado h2")).toBeVisible();
+      await expect(page.locator("#cabecera-revision header.revision-encabezado h2")).toBeVisible();
       const desborde = await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
       );

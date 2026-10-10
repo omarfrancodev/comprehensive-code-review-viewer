@@ -267,6 +267,13 @@ input[type="range"] {
   background: var(--superficie);
 }
 
+.cabecera-revision {
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-2);
+  padding: var(--relleno-panel);
+  background: var(--superficie);
+}
+
 .cabecera-revision:empty {
   display: none;
 }
@@ -806,10 +813,6 @@ input[type="range"] {
 
 /* --- Vistas de la revisión --------------------------------------------- */
 
-.revision-encabezado h2 {
-  margin: 0 0 0.25rem;
-  font-size: 1.1rem;
-}
 
 .identidad,
 .nota {
@@ -962,6 +965,211 @@ input[type="range"] {
   margin: 0;
   padding-left: 1.1rem;
   font-size: 0.88rem;
+}
+
+/* --- Cabecera de la revisión -------------------------------------------- */
+
+.revision-encabezado {
+  display: grid;
+  gap: var(--espacio-2);
+  min-width: 0;
+}
+
+.revision-encabezado > * {
+  margin: 0;
+  min-width: 0;
+}
+
+.revision-encabezado h2 {
+  font-size: var(--tam-titulo);
+  overflow-wrap: anywhere;
+}
+
+.encabezado-repositorio {
+  color: var(--texto-suave);
+  font-size: var(--tam-meta);
+  overflow-wrap: anywhere;
+}
+
+/* Datos compactos: etiqueta sobre valor, en tantas columnas como quepan. */
+.campos--compactos,
+.seccion--identidad > .campos {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: var(--espacio-2) var(--espacio-4);
+}
+
+/* En la cabecera los datos son cortos: dos columnas caben incluso a 375 px. */
+.encabezado-datos {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
+}
+
+.campos--compactos > .campo,
+.seccion--identidad > .campos > .campo {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  min-width: 0;
+}
+
+.encabezado-datos > .campo:first-child {
+  grid-column: 1 / -1;
+}
+
+.id-fila {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espacio-1) var(--espacio-2);
+  min-width: 0;
+}
+
+.id-completo,
+.referencia {
+  min-width: 0;
+  font-size: var(--tam-meta);
+  overflow-wrap: anywhere;
+}
+
+/* El ID se selecciona de un clic: respaldo cuando el portapapeles no está disponible. */
+.id-completo {
+  user-select: all;
+}
+
+.copiar-estado:empty {
+  display: none;
+}
+
+.conceptos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+  gap: var(--espacio-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.concepto {
+  display: grid;
+  align-content: start;
+  gap: var(--espacio-1);
+  min-width: 0;
+  padding: var(--espacio-2) var(--espacio-3);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-1);
+  background: var(--fondo);
+}
+
+.concepto-etiqueta {
+  color: var(--texto-suave);
+  font-size: var(--tam-pequeno);
+}
+
+.concepto-valor,
+.valor-legible {
+  overflow-wrap: anywhere;
+}
+
+.valor-original {
+  color: var(--texto-suave);
+  font-size: var(--tam-meta);
+}
+
+/* --- Seguimiento -------------------------------------------------------- */
+
+.seguimiento-entrada {
+  display: grid;
+  gap: var(--espacio-2);
+  padding: var(--espacio-3) 0;
+  border-top: 1px solid var(--borde);
+}
+
+.seguimiento-entrada:first-of-type {
+  border-top: 0;
+}
+
+.seguimiento-entrada h3 {
+  margin: 0;
+  font-size: var(--tam-texto);
+  overflow-wrap: anywhere;
+}
+
+.entrada-estado {
+  margin: 0;
+}
+
+.json-secundario,
+.campos-originales {
+  font-size: var(--tam-meta);
+}
+
+.json-secundario > summary,
+.campos-originales > summary {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  color: var(--texto-suave);
+  cursor: pointer;
+}
+
+.campos-originales {
+  padding: var(--espacio-2) var(--espacio-3);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-2);
+  background: var(--fondo);
+}
+
+.vinculos {
+  display: grid;
+  gap: var(--espacio-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vinculo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espacio-1) var(--espacio-2);
+  min-width: 0;
+}
+
+.vinculo > code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* --- Archivo ------------------------------------------------------------ */
+
+.diagnosticos-grupo {
+  margin-top: var(--espacio-2);
+  padding-left: var(--espacio-3);
+  border-left: 3px solid var(--borde);
+}
+
+.diagnosticos-grupo > h3 {
+  margin: 0 0 var(--espacio-1);
+  font-size: var(--tam-texto);
+}
+
+.diagnosticos-grupo[data-gravedad="error"] {
+  border-left-color: var(--error);
+}
+
+.diagnosticos-grupo[data-gravedad="warning"] {
+  border-left-color: var(--aviso);
+}
+
+.diagnosticos-grupo[data-gravedad="info"] {
+  border-left-color: var(--acento);
+}
+
+.resultado-integridad:not(:empty) {
+  margin-top: var(--espacio-2);
+}
+
+.resultado-integridad p {
+  margin: var(--espacio-1) 0;
+  overflow-wrap: anywhere;
 }
 
 /* --- Markdown y documentos ------------------------------------------- */
