@@ -1244,29 +1244,248 @@ input[type="range"] {
   font-size: 0.78em;
 }
 
-.lista-archivos {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.3rem;
-}
-
-.archivo {
-  width: 100%;
-  text-align: left;
-  padding: 0.4rem 0.5rem;
-  border: 1px solid var(--borde);
-  border-radius: var(--radio-1);
-  background: var(--fondo);
-  color: inherit;
-  font: inherit;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-
 .vista-previa {
   margin-top: 0.4rem;
+}
+
+/* --- Maestro-detalle: Hallazgos, Validación y Documentos ----------------- */
+
+/*
+ * Lista a la izquierda y detalle a la derecha cuando el panel es ancho; en una
+ * columna en el resto. El detalle vive dentro del panel: el inspector lateral
+ * es solo de Trazabilidad. Ningún valor de la fuente fija un tamaño.
+ */
+.maestro-detalle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--espacio-4);
+  align-items: start;
+  min-width: 0;
+}
+
+@media (min-width: 1000px) {
+  .maestro-detalle {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  }
+}
+
+.maestro,
+.detalle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--espacio-2);
+  align-content: start;
+  min-width: 0;
+}
+
+/* La lista tiene su propio scroll: seleccionar una fila no mueve la página. */
+.lista-densa,
+.lista-archivos {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--espacio-1);
+  max-height: 32rem;
+  margin: 0;
+  padding: var(--espacio-1);
+  overflow-y: auto;
+  list-style: none;
+}
+
+.lista-densa > li,
+.lista-archivos > li {
+  min-width: 0;
+}
+
+/* Grupos por estado dentro de la lista de hallazgos. */
+.grupo-lista {
+  display: grid;
+  gap: var(--espacio-1);
+}
+
+.grupo-titulo {
+  margin: var(--espacio-2) 0 0;
+  color: var(--texto-suave);
+  font-size: var(--tam-meta);
+  font-weight: 600;
+}
+
+.grupo-lista:first-child > .grupo-titulo {
+  margin-top: 0;
+}
+
+.grupo-filas-densas {
+  display: grid;
+  gap: var(--espacio-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fila-hallazgo,
+.fila-comprobacion,
+.fila-archivo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px var(--espacio-2);
+  width: 100%;
+  min-width: 0;
+  padding: var(--espacio-2) var(--espacio-3);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-1);
+  background: var(--superficie);
+  text-align: left;
+}
+
+/* ID y título (o estado) comparten línea; el resto ocupa el ancho completo. */
+.fila-hallazgo,
+.fila-comprobacion {
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+
+.fila-hallazgo > .fila-meta,
+.fila-hallazgo > .fila-ubicacion,
+.fila-comprobacion > .fila-comando {
+  grid-column: 1 / -1;
+}
+
+.fila-hallazgo[aria-pressed="true"],
+.fila-comprobacion[aria-pressed="true"],
+.fila-archivo[aria-pressed="true"] {
+  border-color: var(--acento);
+  background: var(--acento-suave);
+  box-shadow: inset 3px 0 0 var(--acento);
+}
+
+.fila-hallazgo[aria-pressed="true"]:hover:not(:disabled),
+.fila-comprobacion[aria-pressed="true"]:hover:not(:disabled),
+.fila-archivo[aria-pressed="true"]:hover:not(:disabled) {
+  background: var(--acento-suave);
+}
+
+.fila-id,
+.fila-ruta {
+  min-width: 0;
+  font-family: var(--fuente-mono);
+  font-size: var(--tam-meta);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.fila-titulo,
+.fila-ubicacion,
+.fila-comando {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fila-ubicacion,
+.fila-comando {
+  color: var(--texto-suave);
+  font-family: var(--fuente-mono);
+  font-size: var(--tam-pequeno);
+}
+
+.fila-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--espacio-2);
+  min-width: 0;
+  color: var(--texto-suave);
+  font-size: var(--tam-meta);
+}
+
+.fila-prioridad {
+  font-weight: 600;
+}
+
+/* Filtros locales de Hallazgos: acotan la lista, no cambian la revisión. */
+.filtros-locales {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--espacio-2) var(--espacio-3);
+  margin: var(--espacio-3) 0 var(--espacio-2);
+}
+
+.filtros-locales .filtro-campo {
+  flex: 1 1 10rem;
+}
+
+.filtros-locales .filtro-campo > span {
+  color: var(--texto-suave);
+  font-size: var(--tam-meta);
+}
+
+.conteo-filtro {
+  margin: 0 0 var(--espacio-2);
+  color: var(--texto-suave);
+  font-size: var(--tam-meta);
+}
+
+/* Detalle seleccionado; `data-resaltado` marca el destino de una navegación. */
+.detalle > .hallazgo-detalle,
+.detalle > .comprobacion-detalle,
+.detalle > .vista-previa {
+  margin: 0;
+  padding: var(--espacio-3) var(--espacio-4);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-2);
+  background: var(--superficie);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.detalle > [data-resaltado="true"] {
+  border-color: var(--acento);
+  background: var(--acento-suave);
+  box-shadow: inset 3px 0 0 var(--acento);
+}
+
+.detalle > .hallazgo-detalle:focus,
+.detalle > .comprobacion-detalle:focus {
+  outline: none;
+}
+
+.detalle > .hallazgo-detalle:focus-visible,
+.detalle > .comprobacion-detalle:focus-visible {
+  outline: 2px solid var(--foco);
+  outline-offset: 2px;
+}
+
+.detalle .campos {
+  margin-top: var(--espacio-2);
+}
+
+/* Comando y salida: texto en bloque, inerte, con su propio desplazamiento. */
+.codigo.comando,
+.codigo.salida {
+  max-height: 20rem;
+  margin: 0;
+  overflow: auto;
+}
+
+.vista-previa-ruta {
+  margin: 0 0 var(--espacio-1);
+  font-family: var(--fuente-mono);
+  font-size: var(--tam-texto);
+  overflow-wrap: anywhere;
+}
+
+/* Acción interna (ir al hallazgo o a la comprobación): enlace, no destructiva. */
+.enlace-interno {
+  min-height: 24px;
+  padding: 0 var(--espacio-1);
+  border: 0;
+  background: transparent;
+  color: var(--acento);
+  text-decoration: underline;
+}
+
+.enlace-interno:disabled {
+  color: var(--texto-suave);
+  text-decoration: none;
 }
 
 /* --- Trazabilidad y reproducción ------------------------------------- */

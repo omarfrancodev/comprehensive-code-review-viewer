@@ -265,3 +265,46 @@ describe("reduce", () => {
     assert.equal(state.newEventCount, 0);
   });
 });
+describe("destino de navegación entre vistas (openTarget)", () => {
+  it("el estado inicial no tiene destino", () => {
+    assert.equal(createStore().getState().target, null);
+  });
+
+  it("openTarget abre la pestaña del destino y lo guarda", () => {
+    const store = createStore({ selectedRun: "a", tab: "hallazgos" });
+    store.dispatch({ type: "openTarget", tab: "validacion", id: "C001" });
+    assert.equal(store.getState().tab, "validacion");
+    assert.deepEqual(store.getState().target, { tab: "validacion", id: "C001" });
+  });
+
+  it("openTarget ignora una pestaña desconocida o un ID que no es texto", () => {
+    const store = createStore({ selectedRun: "a", tab: "hallazgos" });
+    const antes = store.getState();
+    store.dispatch({ type: "openTarget", tab: "inventada", id: "C001" });
+    store.dispatch({ type: "openTarget", tab: "validacion", id: 7 });
+    store.dispatch({ type: "openTarget", tab: "validacion", id: "" });
+    assert.equal(store.getState(), antes);
+  });
+
+  it("clearTarget lo limpia y, sin destino, no cambia el estado", () => {
+    const store = createStore({ selectedRun: "a" });
+    store.dispatch({ type: "openTarget", tab: "hallazgos", id: "F001" });
+    store.dispatch({ type: "clearTarget" });
+    assert.equal(store.getState().target, null);
+    const antes = store.getState();
+    store.dispatch({ type: "clearTarget" });
+    assert.equal(store.getState(), antes);
+  });
+
+  it("un destino no sobrevive a otra pestaña ni a otra revisión", () => {
+    const store = createStore({ selectedRun: "a" });
+    store.dispatch({ type: "openTarget", tab: "validacion", id: "C001" });
+    store.dispatch({ type: "setTab", tab: "validacion" });
+    assert.deepEqual(store.getState().target, { tab: "validacion", id: "C001" }, "la misma pestaña lo conserva");
+    store.dispatch({ type: "setTab", tab: "archivo" });
+    assert.equal(store.getState().target, null);
+    store.dispatch({ type: "openTarget", tab: "hallazgos", id: "F001" });
+    store.dispatch({ type: "selectRun", key: "b" });
+    assert.equal(store.getState().target, null);
+  });
+});

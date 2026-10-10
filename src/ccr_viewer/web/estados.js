@@ -92,3 +92,26 @@ export function valorLegible(valor, mapa, { vacio = "No declarado" } = {}) {
   }
   return contenedor;
 }
+
+/** Estados de un hallazgo (`findings[].status`). */
+export const ESTADOS_HALLAZGO = {
+  confirmed: "confirmado",
+  unresolved: "no resuelto",
+  rejected: "descartado",
+  candidate: "candidato",
+};
+
+/** Estados de una comprobación (`checks[].status`). */
+export const ESTADOS_COMPROBACION = {
+  passed: "superada",
+  failed: "fallida",
+  blocked: "bloqueada",
+  not_run: "no ejecutada",
+};
+
+/** Clase de un fallo (`checks[].failure_kind`). */
+export const CLASES_FALLO = {
+  product: "defecto de producto",
+  fixture: "defecto de la prueba",
+  environment: "problema de entorno",
+};

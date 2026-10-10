@@ -58,6 +58,9 @@ export const ESTADO_INICIAL = {
   selectedRun: null,
   view: null,
   tab: "ficha",
+  // Destino de una navegación entre vistas ({tab, id}): la vista de esa pestaña
+  // lo consume (selecciona y resalta) y lo limpia con `clearTarget`.
+  target: null,
   scrollTop: 0,
   loading: false,
   error: null,
@@ -108,10 +111,15 @@ export function reduce(state, action) {
       const eventId = typeof action.eventId === "string" ? action.eventId : null;
       if (action.key === state.selectedRun) {
         // Misma revisión: solo se aplican la pestaña y el hito explícitos.
-        const siguiente = { ...state, tab: tab ?? state.tab, selectedEventId: action.eventId === undefined ? state.selectedEventId : eventId };
+        const siguiente = {
+          ...state,
+          tab: tab ?? state.tab,
+          selectedEventId: action.eventId === undefined ? state.selectedEventId : eventId,
+          target: tab && tab !== state.tab ? null : state.target,
+        };
         return siguiente.tab === state.tab && siguiente.selectedEventId === state.selectedEventId ? state : siguiente;
       }
-      return { ...state, selectedRun: action.key ?? null, tab: tab ?? "ficha", selectedEventId: eventId, view: null, scrollTop: 0 };
+      return { ...state, selectedRun: action.key ?? null, tab: tab ?? "ficha", selectedEventId: eventId, view: null, scrollTop: 0, target: null };
     }
     case "selectEvent": {
       const eventId = typeof action.eventId === "string" ? action.eventId : null;
@@ -119,8 +127,18 @@ export function reduce(state, action) {
     }
     case "viewLoaded":
       return { ...state, view: action.view, loading: false, error: null };
-    case "setTab":
-      return state.tab === action.tab ? state : { ...state, tab: action.tab };
+    case "setTab": {
+      if (state.tab === action.tab) return state;
+      // Un destino solo vale para su pestaña: otra pestaña lo descarta.
+      return { ...state, tab: action.tab, target: state.target?.tab === action.tab ? state.target : null };
+    }
+    case "openTarget": {
+      // Solo pestañas del vocabulario y un ID de texto no vacío.
+      if (!ROUTE_TABS.includes(action.tab) || typeof action.id !== "string" || action.id === "") return state;
+      return { ...state, tab: action.tab, target: { tab: action.tab, id: action.id } };
+    }
+    case "clearTarget":
+      return state.target === null ? state : { ...state, target: null };
     case "setScroll":
       return { ...state, scrollTop: action.scrollTop };
     case "setFilters": {

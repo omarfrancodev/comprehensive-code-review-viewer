@@ -47,3 +47,42 @@ export function listaDefinitiva(filas) {
   for (const fila of filas) if (fila) dl.append(fila);
   return dl;
 }
+/** Valor de la fuente como texto: cadena y números tal cual, el resto como JSON. */
+export function textoDe(valor) {
+  if (valor === null || valor === undefined || valor === "") return null;
+  if (typeof valor === "string") return valor;
+  if (typeof valor === "number" || typeof valor === "boolean") return String(valor);
+  return JSON.stringify(valor, null, 2) ?? String(valor);
+}
+
+/** `<details>` que conserva el JSON de `valor` sin interpretarlo. */
+export function detallesJson(titulo, valor, clase = "json-secundario") {
+  const detalles = elemento("details", { clase });
+  detalles.append(
+    elemento("summary", { texto: titulo }),
+    elemento("pre", { clase: "codigo", texto: JSON.stringify(valor, null, 2) ?? String(valor) }),
+  );
+  return detalles;
+}
+
+/**
+ * Destino de navegación pendiente para la pestaña `tab`. Lo consume: avisa al
+ * almacén para que no se reaplique y devuelve su ID, o `null` si no hay uno.
+ */
+export function consumirDestino(contexto, dispatch, tab) {
+  const destino = contexto?.target;
+  if (!destino || destino.tab !== tab || typeof destino.id !== "string") return null;
+  if (typeof dispatch === "function") dispatch({ type: "clearTarget" });
+  return destino.id;
+}
+
+/**
+ * Lleva `nodo` a la vista una vez terminado el redibujo (la aplicación
+ * restaura el desplazamiento al final del suyo) y, opcionalmente, le da el foco.
+ */
+export function traerAVista(nodo, { enfocar = false } = {}) {
+  queueMicrotask(() => {
+    if (typeof nodo.scrollIntoView === "function") nodo.scrollIntoView({ block: "nearest" });
+    if (enfocar && typeof nodo.focus === "function") nodo.focus({ preventScroll: true });
+  });
+}

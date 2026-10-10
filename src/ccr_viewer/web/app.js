@@ -12,12 +12,12 @@ import {
   subscribeNotices,
 } from "./api.js";
 import { createStore } from "./store.js";
-import { renderDocuments } from "./documents.js";
 import { renderLifecycle } from "./lifecycle.js";
 import { createPlayback } from "./playback.js";
 import {
   mountLibrary,
   renderArchive,
+  renderDocuments,
   renderFindings,
   renderHistory,
   renderProfile,
@@ -36,7 +36,7 @@ const PESTANAS = [
   { id: "seguimiento", etiqueta: "Seguimiento", render: renderHistory },
   { id: "documentos", etiqueta: "Documentos", render: null },
   { id: "trazabilidad", etiqueta: "Trazabilidad", render: null },
-  // `render` recibe `dispatch` como tercer argumento: el Archivo no lo usa.
+  // `render` recibe `dispatch` y `{ target }` (destino de navegación): el Archivo no los usa.
   { id: "archivo", etiqueta: "Archivo", render: (contenedor, view) => renderArchive(contenedor, view) },
 ];
 
@@ -56,6 +56,9 @@ let disposeLifecycle = null;
 let renderedState = null;
 // Vista con la que se dibujó la cabecera: no se repinta si no cambia.
 let cabeceraVista = null;
+// Estado local de Hallazgos, Validación y Documentos (filtros y selección): se
+// conserva entre recargas en vivo de la misma revisión y se descarta al cambiar.
+let memoriaVistas = { clave: null };
 
 // Navegación local: aviso visible de la ruta, clave cuya carga viene de la
 // URL o del historial, y bandera para no escribir historial al restaurarlo.
@@ -172,6 +175,11 @@ function enlazarRepeticion(control) {
   });
 }
 
+function memoriaDe(clave) {
+  if (memoriaVistas.clave !== clave) memoriaVistas = { clave };
+  return memoriaVistas;
+}
+
 function dibujarRevision() {
   const estado = store.getState();
   const currentGeneration = ++generation;
@@ -208,7 +216,7 @@ function dibujarRevision() {
     revisionNodo.prepend(elemento("p", { clase: "estado estado--aviso", texto: "La metadata contiene tipos no admitidos; consulta los diagnósticos y el JSON original." }));
   } else if (actual.render) {
     try {
-      actual.render(revisionNodo, estado.view, store.dispatch);
+      actual.render(revisionNodo, estado.view, store.dispatch, { target: estado.target, memoria: memoriaDe(estado.selectedRun) });
     } catch {
       renderArchive(revisionNodo, estado.view);
       revisionNodo.prepend(elemento("p", { clase: "estado estado--aviso", texto: "No se pudo representar la metadata de esta vista; el JSON original sigue disponible." }));
@@ -217,7 +225,7 @@ function dibujarRevision() {
     // Los documentos cargan su inventario bajo demanda.
     revisionNodo.append(elemento("p", { clase: "estado", texto: "Cargando documentos…" }));
     const panel = elemento("div");
-    void renderDocuments(panel, estado.view).then(() => {
+    void renderDocuments(panel, estado.view, undefined, { memoria: memoriaDe(estado.selectedRun) }).then(() => {
       if (generation === currentGeneration) revisionNodo.replaceChildren(panel);
     }).catch((error) => {
       if (generation !== currentGeneration) return;
@@ -250,6 +258,9 @@ function dibujarRevision() {
         );
       });
   }
+  // Un destino que ninguna vista consumió (degradación a Archivo, otra
+  // pestaña) no sobrevive al dibujo: no debe reaplicarse más tarde.
+  store.dispatch({ type: "clearTarget" });
 }
 
 async function cargarBiblioteca() {
@@ -308,15 +319,18 @@ function nombreBase(ruta) {
 
 function dibujar() {
   const estado = store.getState();
+  const previo = renderedState;
+  // Se fija antes de dibujar: una vista que consume su destino despacha
+  // `clearTarget` y ese redibujo anidado no debe repetir el de la vista.
+  renderedState = estado;
   biblioteca.update(estado);
-  if (estado.config && renderedState?.config !== estado.config) {
+  if (estado.config && previo?.config !== estado.config) {
     raizBoton.querySelector(".raiz-etiqueta").textContent = nombreBase(estado.config.root);
   }
-  if (!renderedState || renderedState.view !== estado.view || renderedState.tab !== estado.tab || renderedState.selectedRun !== estado.selectedRun) dibujarRevision();
+  if (!previo || previo.view !== estado.view || previo.tab !== estado.tab || previo.selectedRun !== estado.selectedRun) dibujarRevision();
   shell.setRunSelected(estado.selectedRun, { enfocar: !restaurando });
   shell.setConnection(estado.connection);
-  if (estado.resynced && !renderedState?.resynced) shell.announce(AVISO_RESYNC);
-  renderedState = estado;
+  if (estado.resynced && !previo?.resynced) shell.announce(AVISO_RESYNC);
   // La selección y el desplazamiento se restauran tras cada redibujo.
   if (desplazamiento) window.scrollTo(0, desplazamiento);
 }

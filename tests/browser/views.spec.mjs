@@ -314,3 +314,299 @@ test.describe("Archivo", () => {
     await expect(panel(page).locator("details pre")).toContainText("dato conservado");
   });
 });
+
+// --- Hallazgos, Validación y Documentos (UI-02, parte 2) --------------------
+
+const SEGUNDO_HALLAZGO = {
+  id: "F002",
+  status: "unresolved",
+  priority: "P2",
+  blocking: false,
+  blocking_reason: null,
+  origin: "introduced",
+  title: "Carrera en la caché",
+  location: { path: "src/demo/cache.py", line: 7, url: null, section: null },
+  scenario: "Dos hilos escriben a la vez.",
+  impact: "La lectura devuelve datos rotos.",
+  correction: "Bloquear la escritura.",
+  evidence: [{ kind: "executed", details: "Reproducida en la suite.", check_id: "C001" }],
+};
+
+const conDosHallazgos = () =>
+  conCambios((v) => {
+    v.review.findings.push(structuredClone(SEGUNDO_HALLAZGO));
+  });
+
+const filasHallazgo = (page) => panel(page).locator(".fila-hallazgo");
+const detalleActivo = (page) => panel(page).locator("[data-detalle]");
+
+test.describe("Hallazgos", () => {
+  test("seleccionar un hallazgo abre su detalle sin salir de la pestaña", async ({ page }) => {
+    await abrir(page, conDosHallazgos());
+    await pestana(page, "Hallazgos").click();
+    await expect(filasHallazgo(page)).toHaveCount(2);
+    await expect(filasHallazgo(page).first()).toContainText("F001");
+    await expect(filasHallazgo(page).first()).toContainText("P1");
+    await expect(filasHallazgo(page).first()).toContainText("confirmed");
+    await expect(filasHallazgo(page).first()).toContainText("src/demo/handler.py");
+
+    await filasHallazgo(page).nth(1).click();
+    const detalle = detalleActivo(page);
+    await expect(detalle).toContainText("Carrera en la caché");
+    await expect(detalle).toContainText("Dos hilos escriben a la vez.");
+    await expect(detalle).toContainText("La lectura devuelve datos rotos.");
+    await expect(detalle).toContainText("Bloquear la escritura.");
+    await expect(detalle).toContainText("Reproducida en la suite.");
+    await expect(filasHallazgo(page).nth(1)).toHaveAttribute("aria-pressed", "true");
+    await expect(pestana(page, "Hallazgos")).toHaveAttribute("aria-selected", "true");
+    expect(new URL(page.url()).searchParams.get("tab")).toBe("hallazgos");
+    await expect(filasHallazgo(page)).toHaveCount(2);
+  });
+
+  test("los filtros locales acotan la lista y el conteo", async ({ page }) => {
+    await abrir(page, conDosHallazgos());
+    await pestana(page, "Hallazgos").click();
+    const conteo = panel(page).locator("[data-conteo]");
+    await expect(conteo).toContainText("2 de 2");
+    await panel(page).locator('[data-filtro="estado"]').selectOption("unresolved");
+    await expect(conteo).toContainText("1 de 2");
+    await expect(filasHallazgo(page)).toHaveCount(1);
+    await expect(filasHallazgo(page).first()).toContainText("F002");
+    await panel(page).locator('[data-filtro="estado"]').selectOption("");
+    await panel(page).locator('[data-filtro="texto"]').fill("handler");
+    await expect(conteo).toContainText("1 de 2");
+    await expect(filasHallazgo(page).first()).toContainText("F001");
+    await panel(page).locator('[data-filtro="texto"]').fill("no existe");
+    await expect(panel(page)).toContainText("Ningún hallazgo coincide");
+    await expect(conteo).toContainText("0 de 2");
+  });
+
+  test("la prioridad y el estado desconocidos conservan su valor original", async ({ page }) => {
+    const vista = conCambios((v) => {
+      v.review.findings[0].priority = "P9";
+      v.review.findings[0].status = "estado_futuro";
+    });
+    await abrir(page, vista);
+    await pestana(page, "Hallazgos").click();
+    await expect(filasHallazgo(page).first()).toContainText("P9");
+    await expect(filasHallazgo(page).first()).toContainText("estado_futuro");
+    await panel(page).locator('[data-filtro="prioridad"]').selectOption("P9");
+    await expect(filasHallazgo(page)).toHaveCount(1);
+  });
+
+  test("la referencia a C001 navega a Validación y resalta el check, que lista los hallazgos que lo citan", async ({ page }) => {
+    await abrir(page, conDosHallazgos());
+    await pestana(page, "Hallazgos").click();
+    await filasHallazgo(page).nth(1).click();
+    await detalleActivo(page).getByRole("button", { name: /C001/ }).click();
+
+    await expect(pestana(page, "Validación")).toHaveAttribute("aria-selected", "true");
+    expect(new URL(page.url()).searchParams.get("tab")).toBe("validacion");
+    const check = panel(page).locator('[data-detalle][data-resaltado="true"]');
+    await expect(check).toContainText("C001");
+    await expect(panel(page).locator(".fila-comprobacion").first()).toHaveAttribute("aria-pressed", "true");
+    // Lista los hallazgos que lo citan y permite volver a ellos.
+    await expect(check).toContainText("F002");
+    await expect(check).toContainText("Carrera en la caché");
+    await check.getByRole("button", { name: /F002/ }).click();
+    await expect(pestana(page, "Hallazgos")).toHaveAttribute("aria-selected", "true");
+    await expect(detalleActivo(page)).toContainText("Dos hilos escriben a la vez.");
+    await expect(detalleActivo(page)).toHaveAttribute("data-resaltado", "true");
+  });
+
+  test("el destino se consume: abrir Validación después no vuelve a resaltar", async ({ page }) => {
+    await abrir(page, conDosHallazgos());
+    await pestana(page, "Hallazgos").click();
+    await filasHallazgo(page).nth(1).click();
+    await detalleActivo(page).getByRole("button", { name: /C001/ }).click();
+    await expect(panel(page).locator('[data-detalle][data-resaltado="true"]')).toHaveCount(1);
+    await pestana(page, "Resumen").click();
+    await pestana(page, "Validación").click();
+    await expect(panel(page).locator("[data-detalle]")).toHaveCount(1);
+    await expect(panel(page).locator('[data-detalle][data-resaltado="true"]')).toHaveCount(0);
+  });
+
+  test("los filtros y la selección sobreviven a una recarga en vivo de la misma revisión", async ({ page }) => {
+    await page.addInitScript(() => {
+      window.EventSource = class {
+        addEventListener(tipo, devolucion) {
+          if (tipo === "notice") window.entregarAviso = (aviso) => devolucion({ data: JSON.stringify(aviso) });
+        }
+        close() {}
+      };
+    });
+    await abrir(page, conDosHallazgos());
+    await pestana(page, "Hallazgos").click();
+    await panel(page).locator('[data-filtro="texto"]').fill("caché");
+    await expect(filasHallazgo(page)).toHaveCount(1);
+    await filasHallazgo(page).first().click();
+    // Marca el control actual para comprobar que la vista se dibujó de nuevo.
+    await page.evaluate(() => { document.querySelector('[data-filtro="texto"]').dataset.anterior = "1"; });
+    await page.evaluate((clave) => window.entregarAviso({ kind: "run_changed", run_key: clave, cursor: 2 }), CLAVE);
+    const nuevo = panel(page).locator('[data-filtro="texto"]:not([data-anterior])');
+    await expect(nuevo).toHaveCount(1);
+    await expect(nuevo).toHaveValue("caché");
+    await expect(panel(page).locator("[data-conteo]")).toContainText("1 de 2");
+    await expect(detalleActivo(page)).toContainText("Carrera en la caché");
+  });
+
+  test("el contenido hostil de los hallazgos queda inerte", async ({ page }) => {
+    const vista = conCambios((v) => {
+      v.review.findings[0].title = "<img src=x onerror=\"window.__pwned = true\">";
+      v.review.findings[0].location = { path: "../../etc/passwd", line: 1, url: "javascript:alert(1)", section: null };
+      v.review.findings[0].scenario = "<script>window.__pwned = true</script>";
+      v.review.checks[0].command = "<script>window.__pwned = true</script> && rm -rf /";
+    });
+    await abrir(page, vista);
+    await pestana(page, "Hallazgos").click();
+    await expect(filasHallazgo(page).first()).toContainText("<img src=x");
+    await expect(detalleActivo(page)).toContainText("../../etc/passwd");
+    await expect(detalleActivo(page)).toContainText("javascript:alert(1)");
+    await pestana(page, "Validación").click();
+    await expect(panel(page)).toContainText("<script>window.__pwned = true</script> && rm -rf /");
+    for (const nombre of ["script", "img", "iframe", "a"]) {
+      await expect(panel(page).locator(nombre)).toHaveCount(0);
+    }
+    expect(await page.evaluate(() => window.__pwned ?? false)).toBe(false);
+  });
+});
+
+test.describe("Validación", () => {
+  test("muestra el comando como texto, la salida registrada y no ofrece ejecutar", async ({ page }) => {
+    const vista = conCambios((v) => {
+      v.review.checks.push({
+        id: "C002", command: "npm test", revision: "9f1c2b7", status: "failed", failure_kind: "environment",
+        evidence: "", reused: false, reuse_reason: null, rerun_reason: null,
+      });
+    });
+    await abrir(page, vista);
+    await pestana(page, "Validación").click();
+    const filas = panel(page).locator(".fila-comprobacion");
+    await expect(filas).toHaveCount(2);
+    await expect(detalleActivo(page)).toContainText("python -m unittest discover -s tests");
+    await expect(detalleActivo(page)).toContainText("Suite sintética: 3 pruebas, 0 fallos.");
+    await filas.nth(1).click();
+    await expect(detalleActivo(page)).toContainText("npm test");
+    await expect(detalleActivo(page)).toContainText("Sin salida registrada");
+    await expect(detalleActivo(page)).toContainText("problema de entorno");
+    await expect(panel(page).getByRole("button", { name: /ejecutar|reejecutar|run/i })).toHaveCount(0);
+  });
+
+  test("un check que nadie cita lo declara", async ({ page }) => {
+    await abrir(page);
+    await pestana(page, "Validación").click();
+    await expect(detalleActivo(page)).toContainText("Ningún hallazgo cita esta comprobación");
+  });
+});
+
+test.describe("Documentos", () => {
+  const NOTES = "2".repeat(32);
+  const claveDe = (ruta) => new URL(ruta.request().url()).pathname.split("/").at(-1);
+  const inventario = (page) => panel(page).locator(".fila-archivo");
+  const previa = (page) => panel(page).locator("[data-vista-previa]");
+
+  test("el preview muestra ruta, formato y aviso de truncamiento y el inventario se conserva", async ({ page }) => {
+    await abrir(page);
+    await page.route("**/api/runs/*/files/*", (ruta) =>
+      claveDe(ruta) === NOTES
+        ? responder(ruta, { text: "{\"nota\": 1}", media_kind: "json", truncated: true, total_bytes: 9000 })
+        : ruta.fallback(),
+    );
+    await pestana(page, "Documentos").click();
+    await expect(inventario(page)).toHaveCount(2);
+    // El informe queda seleccionado de inicio.
+    await expect(previa(page)).toContainText("informe.md");
+    await expect(previa(page)).toContainText("markdown");
+    await expect(previa(page).locator(".documento-texto h1")).toHaveText("Informe de revisión sintética");
+
+    await inventario(page).nth(1).click();
+    await expect(previa(page)).toContainText("evidence/notes.json");
+    await expect(previa(page)).toContainText("json");
+    await expect(previa(page)).toContainText("Vista previa truncada");
+    await expect(previa(page)).toContainText("9000 bytes");
+    await expect(previa(page)).toContainText("\"nota\": 1");
+    await expect(inventario(page)).toHaveCount(2);
+    await expect(inventario(page).nth(1)).toHaveAttribute("aria-pressed", "true");
+    await expect(inventario(page).first()).toHaveAttribute("aria-pressed", "false");
+  });
+
+  test("un error de preview conserva la lista y la selección y ofrece Reintentar", async ({ page }) => {
+    await abrir(page);
+    let fallar = true;
+    await page.route("**/api/runs/*/files/*", (ruta) => {
+      if (claveDe(ruta) !== NOTES) return ruta.fallback();
+      if (fallar) {
+        return ruta.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ api_version: 1, error: { code: "read_failed", message: "archivo ilegible" } }),
+        });
+      }
+      return responder(ruta, { text: "contenido recuperado", media_kind: "json", truncated: false, total_bytes: 19 });
+    });
+    await pestana(page, "Documentos").click();
+    await expect(inventario(page)).toHaveCount(2);
+    await inventario(page).nth(1).click();
+    await expect(previa(page)).toContainText("No se pudo leer: archivo ilegible");
+    await expect(inventario(page)).toHaveCount(2);
+    await expect(inventario(page).nth(1)).toHaveAttribute("aria-pressed", "true");
+    fallar = false;
+    await previa(page).getByRole("button", { name: "Reintentar" }).click();
+    await expect(previa(page)).toContainText("contenido recuperado");
+    await expect(previa(page)).not.toContainText("archivo ilegible");
+  });
+
+  test("un enlace local del informe selecciona ese archivo en el inventario", async ({ page }) => {
+    await abrir(page);
+    await page.route("**/api/runs/*/files/*", (ruta) =>
+      claveDe(ruta) === NOTES
+        ? responder(ruta, { text: "{\"enlazado\": true}", media_kind: "json", truncated: false, total_bytes: 18 })
+        : ruta.fallback(),
+    );
+    await pestana(page, "Documentos").click();
+    await previa(page).getByRole("link", { name: "notas locales" }).click();
+    await expect(previa(page)).toContainText("\"enlazado\": true");
+    await expect(inventario(page).nth(1)).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("informe ausente, inventario vacío y lectura fallida son tres mensajes distintos", async ({ page }) => {
+    await abrir(page);
+    await page.route("**/api/runs/*/files", (ruta) =>
+      responder(ruta, [
+        { key: NOTES, name: "notes.json", relative_path: "evidence/notes.json", media_kind: "json", bytes: 32, available: true },
+      ]),
+    );
+    await pestana(page, "Documentos").click();
+    await expect(panel(page)).toContainText("no conserva un informe Markdown");
+    await expect(inventario(page)).toHaveCount(1);
+    await expect(panel(page)).not.toContainText("inventario está vacío");
+
+    await page.route("**/api/runs/*/files", (ruta) => responder(ruta, []));
+    await pestana(page, "Resumen").click();
+    await pestana(page, "Documentos").click();
+    await expect(panel(page)).toContainText("inventario está vacío");
+    await expect(panel(page)).not.toContainText("no conserva un informe Markdown");
+
+    await page.route("**/api/runs/*/files", (ruta) =>
+      ruta.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ api_version: 1, error: { code: "read_failed", message: "inventario ilegible" } }),
+      }),
+    );
+    await pestana(page, "Resumen").click();
+    await pestana(page, "Documentos").click();
+    await expect(panel(page)).toContainText("No se pudo leer el inventario: inventario ilegible");
+    await expect(panel(page).getByRole("button", { name: "Reintentar" })).toBeVisible();
+    await expect(panel(page)).not.toContainText("inventario está vacío");
+  });
+
+  test("las vistas nuevas no usan estilos en línea", async ({ page }) => {
+    await abrir(page, conDosHallazgos());
+    for (const nombre of ["Hallazgos", "Validación", "Documentos"]) {
+      await pestana(page, nombre).click();
+      await expect(pestana(page, nombre)).toHaveAttribute("aria-selected", "true");
+      await expect(panel(page).locator("[style]")).toHaveCount(0);
+    }
+  });
+});
