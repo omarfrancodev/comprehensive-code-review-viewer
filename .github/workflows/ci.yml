@@ -1,0 +1,82 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Instalar el paquete
+        run: python -m pip install -e .
+      - name: Pruebas de solo lectura, seguridad y empaquetado
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+
+  frontend:
+    name: Frontend (Node 22)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Instalar dependencias bloqueadas
+        run: npm ci
+      - name: Comprobar el inventario de recursos de navegador
+        run: node tools/vendor.mjs && git diff --exit-code src/ccr_viewer/web/vendor
+      - name: Pruebas unitarias del navegador
+        run: node --test "tests/js/*.test.mjs"
+
+  browser:
+    name: Navegador (Chromium y Firefox)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar dependencias
+        run: |
+          npm ci
+          python -m pip install -e .
+      - name: Instalar navegadores
+        run: npx playwright install --with-deps chromium firefox
+      - name: Pruebas de navegador
+        run: npm run test:browser
+
+  wheel:
+    name: Wheel instalable
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Construir la wheel
+        run: python -m pip wheel . --no-deps --wheel-dir dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel
+          path: dist/*.whl

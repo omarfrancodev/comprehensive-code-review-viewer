@@ -533,3 +533,101 @@ def archive_inventory(root: Path) -> dict[str, tuple[int, str, int]]:
             status.st_mtime_ns,
         )
     return inventory
+
+# --- Transiciones del productor de prueba ----------------------------------
+#
+# Estas funciones escriben en el archivo sintético como lo haría el productor.
+# Son un productor de prueba, no lógica del visor: el visor nunca llama a esto.
+
+_TRANSICIONES = ("prepare_to_discovery", "add_check", "transient_retention",
+                 "retained_then_closed")
+
+
+def _leer_cierre(run: Path) -> dict:
+    return json.loads((run / "cierre.json").read_text(encoding="utf-8"))
+
+
+def _escribir_cierre(run: Path, closure: dict) -> None:
+    data = canonical_json_bytes(closure)
+    (run / "cierre.json").write_bytes(data)
+    marker_path = run / ".review-ownership.json"
+    if not marker_path.exists():
+        return
+    marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    marker["manifest_sha256"] = hashlib.sha256(data).hexdigest()
+    marker.pop("previous_manifest_sha256", None)
+    marker_path.write_bytes(canonical_json_bytes(marker))
+
+
+def _anexar_hito(run: Path, closure: dict, milestone: dict) -> dict:
+    """Añade un hito a la traza y actualiza el descriptor del cierre."""
+
+    data = run / "trazabilidad.jsonl"
+    existente = data.read_bytes() if data.exists() else b""
+    data_nuevo, descriptor = trace_event_bytes(
+        _leer_hitos(existente) + [milestone], RUN_ID
+    )
+    data.write_bytes(data_nuevo)
+    closure["trace"] = descriptor
+    closure["hashes"]["trazabilidad.jsonl"] = hashlib.sha256(data_nuevo).hexdigest()
+    return closure
+
+
+def _leer_hitos(data: bytes) -> list[dict]:
+    """Quita los campos de sistema para volver a la forma de entrada del productor."""
+
+    hitos = []
+    for linea in data.splitlines():
+        if not linea.strip():
+            continue
+        valor = json.loads(linea)
+        hitos.append({clave: valor[clave] for clave in valor
+                      if clave not in {"schema_version", "sequence", "event_id", "run_id",
+                                       "review_id", "recorded_at", "recorder",
+                                       "previous_sha256", "sha256"}})
+    return hitos
+
+
+def advance_fixture(run: Path, transition: str) -> None:
+    """Aplica una transición sintética del productor sobre la corrida indicada."""
+
+    if transition not in _TRANSICIONES:
+        raise ValueError("transición desconocida: " + transition)
+    closure = _leer_cierre(run)
+
+    if transition == "prepare_to_discovery":
+        closure["state"] = "processing"
+        _anexar_hito(run, closure, _milestone(
+            "discovery", "started", "Descubrimiento estático sintético iniciado",
+            "2026-09-01T12:05:00+00:00"))
+    elif transition == "add_check":
+        closure["state"] = "processing"
+        _anexar_hito(run, closure, _milestone(
+            "check", "passed", "Comprobación sintética ejecutada",
+            "2026-09-01T12:06:00+00:00"))
+    elif transition == "transient_retention":
+        # Declara una intención pendiente sin ejecutarla: el visor no debe
+        # consumarla ni recuperarla.
+        closure["state"] = "retaining"
+        closure["planned_hashes"] = {"evidence/pendiente.json": "0" * 64}
+        closure["pending_trace"] = {
+            "trace": closure.get("trace", {"schema_version": 1, "events": 0, "last_sha256": None}),
+            "sha256": None,
+            "event": {"kind": "retain", "status": "completed"},
+        }
+    elif transition == "retained_then_closed":
+        # Se observan las dos fases por separado: cerrar no es completar.
+        closure.pop("planned_hashes", None)
+        closure.pop("pending_trace", None)
+        closure["state"] = "closing"
+        closure["cleanup"] = "pending"
+        _escribir_cierre(run, closure)
+        closure["state"] = "complete"
+        closure["cleanup"] = "not_needed"
+        closure["retained"] = True
+        _anexar_hito(run, closure, _milestone(
+            "close", "completed", "Cierre sintético observado", None))
+        _escribir_cierre(run, closure)
+        return
+
+    _escribir_cierre(run, closure)
