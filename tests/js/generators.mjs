@@ -31,12 +31,17 @@ export function claveSintetica(indice) {
  *   «PR #42»); solo cambian su ID de revisión y su clave.
  * - `longUrl`: repositorio, alcance, referencia e ID largos y sin espacios.
  *
- * Las corridas se agrupan de diez en diez por repositorio, en orden.
+ * Las corridas se agrupan de diez en diez por repositorio, en orden; con
+ * `interleaved` se alternan los repositorios fila a fila (orden por fecha).
  */
-export function bibliotecaSintetica(total, { sameTitle = false, longUrl = false } = {}) {
+export function bibliotecaSintetica(total, { sameTitle = false, longUrl = false, interleaved = false } = {}) {
+  const repositorios = Math.max(1, Math.ceil(total / RUN_POR_REPOSITORIO));
   const items = Array.from({ length: total }, (_, i) => {
     const numero = sameTitle ? 42 : i + 1;
-    const repositorio = `git.ejemplo.invalid/acme/repo-${String(Math.floor(i / RUN_POR_REPOSITORIO)).padStart(3, "0")}`;
+    // `interleaved` reparte las corridas entre repositorios en orden cíclico,
+    // como un servidor que ordena por fecha entre repositorios.
+    const indiceRepo = interleaved ? i % repositorios : Math.floor(i / RUN_POR_REPOSITORIO);
+    const repositorio = `git.ejemplo.invalid/acme/repo-${String(indiceRepo).padStart(3, "0")}`;
     const largo = "segmento-sin-espacios-".repeat(14);
     const identidad = longUrl ? `https://git.ejemplo.invalid/${largo}${repositorio.split("/").at(-1)}` : repositorio;
     const [archive_state, display_state] = ESTADOS[i % ESTADOS.length];

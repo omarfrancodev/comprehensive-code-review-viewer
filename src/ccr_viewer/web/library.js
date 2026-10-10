@@ -252,6 +252,8 @@ export function mountLibrary(container, { getState, dispatch }) {
   let temporizador = null;
   const detallesAbiertos = new Set();
   let previo = {};
+  // Filtros aplicados que vio el formulario por última vez (normalizados).
+  let aplicadosVistos = {};
 
   const filtrosAplicados = () => getState().filters ?? {};
   const aplicarFiltros = (nuevos) => dispatch({ type: "setFilters", filters: normalizeFilters(nuevos) });
@@ -325,6 +327,21 @@ export function mountLibrary(container, { getState, dispatch }) {
     aplicar.disabled = visibles.length > 0;
     if (visibles.length > 0) aplicar.setAttribute("aria-describedby", visibles.join(" "));
     else aplicar.removeAttribute("aria-describedby");
+  }
+
+  /**
+   * Con el panel abierto, un cambio aplicado desde otro control (chips, «Limpiar»,
+   * quitar chip) sustituye al borrador de esa clave; los demás borradores se
+   * conservan. Así «Aplicar» nunca revierte en silencio un filtro ya aplicado.
+   */
+  function sincronizarBorradorCambiado(anteriores, nuevos) {
+    let cambio = false;
+    for (const { clave } of CONTROLES) {
+      if (anteriores[clave] === nuevos[clave]) continue;
+      controles[clave].escribir(nuevos[clave] ?? "");
+      cambio = true;
+    }
+    if (cambio) refrescarBorrador();
   }
 
   function abrirPanel() {
@@ -490,21 +507,26 @@ export function mountLibrary(container, { getState, dispatch }) {
   function lista(items) {
     const etiquetas = labelRuns(items);
     const raiz = elemento("ul", { clase: "lista-revisiones" });
-    let grupo = null;
-    let anteriorRepo;
+    // Se agrupa toda la página por repositorio, no solo las filas contiguas: el
+    // servidor ordena por fecha entre repositorios. Los grupos siguen el orden
+    // de primera aparición y cada uno conserva el orden del servidor.
+    const grupos = new Map();
     for (const item of items) {
       const repositorio = repositorioDe(item);
-      if (grupo === null || repositorio !== anteriorRepo) {
-        const nodo = elemento("li", { clase: "grupo-revisiones" });
-        nodo.append(
-          elemento("h3", { texto: repositorio ?? "Repositorio no identificado", atributos: repositorio ? { title: repositorio } : {} }),
-        );
-        grupo = elemento("ul", { clase: "grupo-filas" });
-        nodo.append(grupo);
-        raiz.append(nodo);
-        anteriorRepo = repositorio;
+      if (!grupos.has(repositorio)) grupos.set(repositorio, []);
+      grupos.get(repositorio).push(item);
+    }
+    for (const [repositorio, miembros] of grupos) {
+      const nodo = elemento("li", { clase: "grupo-revisiones" });
+      nodo.append(
+        elemento("h3", { texto: repositorio ?? "Repositorio no identificado", atributos: repositorio ? { title: repositorio } : {} }),
+      );
+      const filas = elemento("ul", { clase: "grupo-filas" });
+      for (const item of miembros) {
+        filas.append(filaRevision(item, etiquetas.get(item.key) ?? { label: item.key ?? "Revisión sin identificar", hint: null }));
       }
-      grupo.append(filaRevision(item, etiquetas.get(item.key) ?? { label: item.key ?? "Revisión sin identificar", hint: null }));
+      nodo.append(filas);
+      raiz.append(nodo);
     }
     return raiz;
   }
@@ -608,7 +630,12 @@ export function mountLibrary(container, { getState, dispatch }) {
       previo.libraryStale !== estado.libraryStale ||
       previo.libraryError !== estado.libraryError ||
       previo.filters !== filtros;
-    if (previo.filters !== filtros) actualizarControlesDeFiltros(filtros);
+    if (previo.filters !== filtros) {
+      const nuevos = normalizeFilters(filtros);
+      if (!formulario.hidden) sincronizarBorradorCambiado(aplicadosVistos, nuevos);
+      aplicadosVistos = nuevos;
+      actualizarControlesDeFiltros(filtros);
+    }
     if (previo.library !== estado.library) actualizarSugerencias(estado.library?.items);
     if (cambioLista) pintarLista(estado);
     if (cambioLista || previo.selectedRun !== estado.selectedRun) marcarSeleccion(estado.selectedRun ?? null);

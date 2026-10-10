@@ -96,6 +96,25 @@ test.describe("UI-01 lista y paginación", () => {
     await expect(filas(page)).toHaveCount(50);
   });
 
+  test("con repositorios intercalados (orden por fecha) agrupa toda la página y conserva el orden", async ({ page }) => {
+    const library = bibliotecaSintetica(30, { interleaved: true });
+    await openFixture(page, { library });
+    // Sin agrupar solo filas contiguas, los tres repositorios se repetirían 30 veces.
+    const grupos = page.locator("#biblioteca .grupo-revisiones > h3");
+    await expect(grupos).toHaveCount(3);
+    const encabezados = await grupos.allTextContents();
+    expect(new Set(encabezados).size).toBe(3);
+    expect(encabezados).toEqual([...new Set(library.items.map((item) => item.repository_identity))]);
+    // Dentro de cada grupo se respeta el orden del servidor, y el orden del DOM
+    // (el del teclado) es el mismo que se ve: grupo a grupo.
+    const mostradas = await filas(page).evaluateAll((nodos) => nodos.map((nodo) => nodo.dataset.key));
+    const esperadas = encabezados.flatMap((repo) =>
+      library.items.filter((item) => item.repository_identity === repo).map((item) => item.key),
+    );
+    expect(mostradas).toEqual(esperadas);
+    expect(mostradas).toHaveLength(30);
+  });
+
   test("etiquetas coincidentes: dos filas «PR #42» muestran su ID de revisión distinto", async ({ page }) => {
     const library = bibliotecaSintetica(3, { sameTitle: true });
     await openFixture(page, { library });
@@ -183,6 +202,63 @@ test.describe("UI-01 filtros", () => {
     await panel(page).getByLabel("Hasta", { exact: true }).fill("2026-09-25");
     await expect(aplicar).toBeEnabled();
     await expect(panel(page).locator(".filtro-error:visible")).toHaveCount(0);
+  });
+
+  test("un chip rápido aplicado con el panel abierto no se revierte al pulsar «Aplicar»", async ({ page }) => {
+    const pedidas = registrar(page);
+    await openFixture(page, { library: bibliotecaSintetica(100) });
+    await abrirFiltros(page);
+    await expect(panel(page).getByLabel("Abiertas o cerradas", { exact: true })).toHaveValue("");
+    await page.getByRole("button", { name: "Abiertas", exact: true }).click();
+    await expect.poll(() => pedidas.at(-1).get("open")).toBe("true");
+    // El borrador refleja el filtro aplicado desde fuera del formulario.
+    await expect(panel(page).getByLabel("Abiertas o cerradas", { exact: true })).toHaveValue("true");
+    await panel(page).getByLabel("Veredicto", { exact: true }).selectOption("approvable");
+    await panel(page).getByRole("button", { name: "Aplicar" }).click();
+    await expect.poll(() => pedidas.at(-1).get("verdict")).toBe("approvable");
+    expect(pedidas.at(-1).get("open")).toBe("true");
+    await expect(page.getByRole("button", { name: "Abiertas", exact: true })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("«Limpiar» con el panel abierto vacía los borradores y no reaplica valores viejos", async ({ page }) => {
+    const pedidas = registrar(page);
+    await openFixture(page, { library: bibliotecaSintetica(100) });
+    await abrirFiltros(page);
+    await panel(page).getByLabel("Perfil", { exact: true }).selectOption("deep");
+    await panel(page).getByLabel("Repositorio", { exact: true }).fill("git.ejemplo.invalid/acme/repo-001");
+    await panel(page).getByRole("button", { name: "Aplicar" }).click();
+    await expect.poll(() => pedidas.at(-1).get("profile")).toBe("deep");
+
+    await abrirFiltros(page);
+    await expect(panel(page).getByLabel("Perfil", { exact: true })).toHaveValue("deep");
+    // Un borrador sin aplicar en otra clave se conserva al cambiar los filtros.
+    await panel(page).getByLabel("Veredicto", { exact: true }).selectOption("not_approvable");
+    await page.getByRole("button", { name: "Limpiar", exact: true }).click();
+    await expect.poll(() => pedidas.at(-1).has("profile")).toBe(false);
+    await expect(panel(page).getByLabel("Perfil", { exact: true })).toHaveValue("");
+    await expect(panel(page).getByLabel("Repositorio", { exact: true })).toHaveValue("");
+    await expect(panel(page).getByLabel("Veredicto", { exact: true })).toHaveValue("not_approvable");
+
+    await panel(page).getByLabel("Tipo", { exact: true }).selectOption("review");
+    await panel(page).getByRole("button", { name: "Aplicar" }).click();
+    await expect.poll(() => pedidas.at(-1).get("kind")).toBe("review");
+    expect(pedidas.at(-1).has("profile")).toBe(false);
+    expect(pedidas.at(-1).has("repository")).toBe(false);
+  });
+
+  test("quitar un chip con el panel abierto actualiza solo su borrador", async ({ page }) => {
+    const pedidas = registrar(page);
+    await openFixture(page, { library: bibliotecaSintetica(100) });
+    await abrirFiltros(page);
+    await panel(page).getByLabel("Perfil", { exact: true }).selectOption("deep");
+    await panel(page).getByLabel("Tipo", { exact: true }).selectOption("review");
+    await panel(page).getByRole("button", { name: "Aplicar" }).click();
+    await expect.poll(() => pedidas.at(-1).get("kind")).toBe("review");
+    await abrirFiltros(page);
+    await page.getByRole("button", { name: "Quitar filtro Perfil: deep" }).click();
+    await expect.poll(() => pedidas.at(-1).has("profile")).toBe(false);
+    await expect(panel(page).getByLabel("Perfil", { exact: true })).toHaveValue("");
+    await expect(panel(page).getByLabel("Tipo", { exact: true })).toHaveValue("review");
   });
 
   test("«Cancelar» descarta los borradores sin pedir nada", async ({ page }) => {
@@ -462,6 +538,36 @@ test.describe("UI-01 estados, selección y recarga", () => {
     await aviso.getByRole("button", { name: "Reintentar" }).click();
     await expect(aviso).toHaveCount(0);
     await expect(filas(page)).toHaveCount(31);
+  });
+
+  test("un fallo de /api/config se muestra y se anuncia sin ocultar la biblioteca", async ({ page }) => {
+    // La región polite es de un solo mensaje: se registran todos los anuncios.
+    await page.addInitScript(() => {
+      window.__anuncios = [];
+      document.addEventListener("DOMContentLoaded", () => {
+        const region = document.getElementById("anunciador");
+        new MutationObserver(() => window.__anuncios.push(region.textContent)).observe(region, { childList: true, characterData: true, subtree: true });
+      });
+    });
+    await openFixture(page, { library: bibliotecaSintetica(6) });
+    const mensaje = "Configuración sintética ilegible.";
+    await page.route("**/api/config", (ruta) =>
+      ruta.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ api_version: 1, error: { code: "config_failed", message: mensaje } }),
+      }),
+    );
+    await page.reload();
+    await expect(page.locator("#raiz")).toContainText(mensaje);
+    await expect(page.locator("#raiz")).not.toContainText("Cargando la raíz");
+    await expect.poll(async () => (await page.evaluate(() => window.__anuncios)).filter((texto) => texto.includes(mensaje)).length).toBe(1);
+    await expect(filas(page)).toHaveCount(6);
+    // El diálogo de la raíz explica el fallo en lugar de prometer disponibilidad.
+    await page.locator("#raiz").click();
+    await expect(page.getByRole("dialog", { name: "Contexto de raíz" })).toContainText(mensaje);
+    await page.keyboard.press("Escape");
+    await expect(filas(page)).toHaveCount(6);
   });
 
   test("un error al cargar una revisión no oculta la biblioteca", async ({ page }) => {

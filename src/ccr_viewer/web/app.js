@@ -56,6 +56,8 @@ let historialListo = false;
 // Último fallo al leer la revisión seleccionada: el panel lo muestra aunque
 // una recarga posterior de la biblioteca limpie `error` del store.
 let errorRevision = null;
+// Fallo al leer `/api/config`: se muestra en la etiqueta y el diálogo de la raíz.
+let errorConfiguracion = null;
 
 const raizDocumento = document.documentElement;
 const shell = mountShell(document);
@@ -382,7 +384,11 @@ raizBoton?.addEventListener("click", () => {
     build(cuerpo) {
       const config = store.getState().config;
       if (!config) {
-        cuerpo.append(elemento("p", { clase: "estado", texto: "La configuración de la raíz todavía no está disponible." }));
+        cuerpo.append(
+          errorConfiguracion
+            ? elemento("p", { clase: "estado estado--error", texto: `No se pudo leer la configuración de la raíz: ${errorConfiguracion}` })
+            : elemento("p", { clase: "estado", texto: "La configuración de la raíz todavía no está disponible." }),
+        );
         return;
       }
       cuerpo.append(
@@ -435,7 +441,13 @@ async function iniciar() {
   try {
     store.dispatch({ type: "configLoaded", config: await getConfig() });
   } catch (error) {
+    // Sin configuración no hay raíz que mostrar: el fallo queda visible en la
+    // etiqueta de la raíz y se anuncia; la biblioteca sigue cargando.
+    errorConfiguracion = error.message;
     store.dispatch({ type: "setError", error: error.message });
+    raizBoton.querySelector(".raiz-etiqueta").textContent = `Raíz no disponible: ${error.message}`;
+    raizBoton.title = `No se pudo leer la configuración: ${error.message}`;
+    shell.announce(`No se pudo leer la configuración de la raíz: ${error.message}`);
   }
   aplicarRutaInicial();
   await cargarBiblioteca();
