@@ -81,6 +81,11 @@ jerarquía visual, presentación de identificadores largos y exploración de la
 trazabilidad. La publicación actual permite probar esa base; el rediseño se
 documenta y revisa por separado.
 
+## Licencia
+
+El proyecto se distribuye bajo la [licencia MIT](LICENSE). Los recursos vendor
+conservan sus respectivas licencias en `src/ccr_viewer/web/vendor/`.
+
 ## Proyecto relacionado
 
 La [skill Comprehensive Code Review](https://github.com/omarfrancodev/comprehensive-code-review)

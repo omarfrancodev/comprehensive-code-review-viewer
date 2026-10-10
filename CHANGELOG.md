@@ -23,6 +23,7 @@ Code Review.
   diagnóstico de versiones y datos desconocidos.
 - Distribución como wheel y ejecución mediante `ccr-viewer` o
   `python -m ccr_viewer`, con Python 3.10 o posterior.
+- Licencia MIT para el proyecto, conservando las licencias de recursos de terceros.
 
 ### Corregido durante la validación inicial
 
