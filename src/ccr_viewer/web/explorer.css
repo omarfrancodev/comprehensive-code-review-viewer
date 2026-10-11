@@ -505,8 +505,13 @@ button[aria-disabled="true"] {
   font-size: var(--tam-pequeno);
 }
 
-.tarjeta-copiar {
+.tarjeta-botones {
+  display: inline-flex;
+  gap: var(--espacio-2);
   margin-left: auto;
+}
+
+.tarjeta-copiar {
   font-size: var(--tam-meta);
 }
 

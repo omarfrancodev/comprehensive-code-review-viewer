@@ -197,16 +197,37 @@ test.describe("revelado progresivo del elemento", () => {
     await expect(boton(page, "Pausar")).toBeVisible();
   });
 
-  test("foco: las acciones ocultas son inertes y el botón principal describe el resumen completo", async ({ page }) => {
+  test("foco: los botones de acción ocultos son inertes y el botón principal describe el resumen completo", async ({ page }) => {
     await abrirTraza(page);
     await boton(page, "Reiniciar").click();
     const primera = tarjeta(page, "E000001");
     await expect(primera).toHaveAttribute("data-state", "revealing");
-    const acciones = primera.locator('[data-part="actions"]');
-    await expect(acciones).toHaveAttribute("inert", "");
-    const copiar = primera.getByRole("button", { name: /Copiar resumen/ });
+    expect(await etapa(page, "E000001", "estructura")).toBe(0);
+    // Solo los botones son inertes; el pie con sus datos no lo es.
+    const botones = primera.locator('[data-part="action-buttons"]');
+    await expect(botones).toHaveAttribute("inert", "");
+    await expect(primera.locator('[data-part="actions"]')).not.toHaveAttribute("inert", /.*/);
+    const copiar = primera.locator(".tarjeta-copiar");
     await copiar.evaluate((nodo) => nodo.focus());
     await expect(copiar).not.toBeFocused();
+
+    // Tipo, estado original y hora siguen accesibles, seleccionables y fuera de todo subárbol inerte.
+    const datos = await primera.locator('[data-part="actions"]').evaluate((pie) =>
+      [".tarjeta-tipo", ".tarjeta-estado", ".hito-tiempo"].map((selector) => {
+        const nodo = pie.querySelector(selector);
+        window.getSelection().selectAllChildren(nodo);
+        return { inerte: nodo.closest("[inert]") !== null, seleccion: window.getSelection().toString() };
+      }));
+    expect(datos.map((dato) => dato.inerte)).toEqual([false, false, false]);
+    expect(datos[0].seleccion).toBe("prepare");
+    expect(datos[1].seleccion).toBe("completed");
+    expect(datos[2].seleccion).toContain("respaldo de registro");
+    await expect(primera.getByText("prepare", { exact: true })).toBeVisible();
+    await expect(primera.getByText("completed", { exact: true })).toBeVisible();
+    const arbol = await primera.ariaSnapshot();
+    expect(arbol).toContain("prepare");
+    expect(arbol).toContain("completed");
+    expect(arbol).toContain("respaldo de registro");
 
     const principal = primera.locator("button.tarjeta-boton");
     const descrito = await principal.getAttribute("aria-describedby");
@@ -214,13 +235,13 @@ test.describe("revelado progresivo del elemento", () => {
     await expect(page.locator(`[id="${descrito}"]`)).toHaveText("Archivo sintético preparado");
     await expect(principal).toHaveAccessibleDescription("Archivo sintético preparado");
 
-    // Con el teclado, el tabulador salta las acciones ocultas.
+    // Con el teclado, el tabulador salta los botones ocultos.
     await principal.focus();
     await page.keyboard.press("Tab");
     expect(await page.evaluate(() => Boolean(document.activeElement?.closest('[data-event-id="E000001"] [data-part="actions"]')))).toBe(false);
 
     await boton(page, "Mostrar tarjeta completa").click();
-    await expect(acciones).not.toHaveAttribute("inert", /.*/);
+    await expect(botones).not.toHaveAttribute("inert", /.*/);
     await copiar.focus();
     await expect(copiar).toBeFocused();
   });
@@ -249,7 +270,7 @@ test.describe("revelado progresivo del elemento", () => {
     await page.clock.runFor(1300);
     const primera = tarjeta(page, "E000001");
     await expect(primera).toHaveAttribute("data-state", "revealing");
-    await expect(primera.locator('[data-part="actions"]')).not.toHaveAttribute("inert", /.*/);
+    await expect(primera.locator('[data-part="action-buttons"]')).not.toHaveAttribute("inert", /.*/);
     await primera.getByRole("button", { name: /Copiar resumen/ }).click();
     await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("Archivo sintético preparado");
   });

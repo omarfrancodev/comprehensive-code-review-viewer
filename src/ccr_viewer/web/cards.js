@@ -15,7 +15,9 @@
  * de sus partes. El texto completo está en el DOM desde el principio (copiar,
  * buscar y lectores nunca ven una versión parcial) y el espacio de la tarjeta
  * es el final desde el primer fotograma: nada se mide ni cambia de altura.
- * Mientras las acciones están ocultas su contenedor es `inert`.
+ * Mientras las acciones están ocultas, solo sus botones (`data-part="action-buttons"`)
+ * son `inert`: tipo, estado original, hora y «Recibido» siguen en el árbol de
+ * accesibilidad, seleccionables y localizables durante todo el revelado.
  */
 
 import { botonAccion, elemento, fijarInactivo, reconciliarHijos, textoDe } from "./dom.js";
@@ -55,13 +57,13 @@ async function copiarResumen(texto, nodo, rotulo) {
  * escribe lo que cambió: una tarjeta por fotograma, sin tocar el resto.
  */
 function fijarRevelado(entrada, etapas) {
-  const { li, boton, acciones, resumen } = entrada;
+  const { li, boton, botones, resumen } = entrada;
   if (!etapas) {
     if (!entrada.revelado) return;
     entrada.revelado = null;
     for (const [, propiedad] of ETAPAS) li.style.removeProperty(propiedad);
     boton.removeAttribute("aria-describedby");
-    acciones.inert = false;
+    botones.inert = false;
     return;
   }
   if (!entrada.revelado) {
@@ -75,11 +77,11 @@ function fijarRevelado(entrada, etapas) {
     entrada.revelado[nombre] = valor;
     li.style.setProperty(propiedad, valor);
   }
-  // Acciones visualmente ocultas no reciben foco.
+  // Botones de acción visualmente ocultos no reciben foco; los datos del pie no se ocultan.
   const ocultas = !(etapas.actions > 0);
-  if (acciones.inert !== ocultas) {
-    if (ocultas && acciones.contains(document.activeElement)) boton.focus({ preventScroll: true });
-    acciones.inert = ocultas;
+  if (botones.inert !== ocultas) {
+    if (ocultas && botones.contains(document.activeElement)) boton.focus({ preventScroll: true });
+    botones.inert = ocultas;
   }
 }
 
@@ -140,22 +142,25 @@ export function crearTarjetas({ onSelect, onPagina, onDesplazar }) {
       nodoTiempo(evento),
       recibido,
     );
+    // Solo los elementos interactivos del pie: es lo único que se vuelve `inert`.
+    const botones = elemento("span", { clase: "tarjeta-botones", atributos: { "data-part": "action-buttons" } });
     if (textoResumen !== null) {
       const rotulo = elemento("span", { texto: "Copiar resumen" });
       const copiar = elemento("button", { clase: "tarjeta-copiar", atributos: { type: "button" } });
       copiar.append(rotulo, elemento("span", { clase: "solo-lectores", texto: ` de ${id}` }));
       copiar.addEventListener("click", () => copiarResumen(textoResumen, resumen, rotulo));
       copiar.addEventListener("blur", () => { rotulo.textContent = "Copiar resumen"; });
-      acciones.append(copiar);
+      botones.append(copiar);
     }
     // Brillo decorativo de la etapa de estructura.
     const brillo = elemento("span", { clase: "tarjeta-brillo", atributos: { "data-part": "shimmer", "aria-hidden": "true" } });
     const conFoco = entrada.li.contains(document.activeElement);
+    if (botones.childElementCount > 0) acciones.append(botones);
     entrada.li.replaceChildren(brillo, boton, acciones);
     if (conFoco) boton.focus({ preventScroll: true });
     // Nodos nuevos: `sincronizar` (en la misma tarea) vuelve a aplicar el revelado vigente.
     if (entrada.revelado) for (const [, propiedad] of ETAPAS) entrada.li.style.removeProperty(propiedad);
-    Object.assign(entrada, { boton, acciones, resumen, recibido, etiqueta, revelado: null });
+    Object.assign(entrada, { boton, botones, resumen, recibido, etiqueta, revelado: null });
   }
 
   function sincronizar(actual, modelo) {
