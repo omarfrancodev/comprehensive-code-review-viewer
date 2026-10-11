@@ -21,7 +21,7 @@
  *
  * Acciones (§6.3): «Relaciones (n)» y «Evidencia (n)» solo cuando el hito las
  * declara (coste de teclado acotado); seleccionan el hito y despliegan su
- * sección del inspector sin mover el foco. «Copiar resumen» sigue disponible.
+ * sección del inspector sin mover el foco.
  *
  * Fuente (§8): con el cierre en `processing`, la tarjeta del último hito
  * aceptado por secuencia lleva `data-active-source="true"` y el indicador de
@@ -50,17 +50,6 @@ const ETAPAS = [
 ];
 
 let resumenes = 0;
-
-/** Copia el resumen completo; si el portapapeles falla, lo deja seleccionado. */
-async function copiarResumen(texto, nodo, rotulo) {
-  try {
-    await globalThis.navigator.clipboard.writeText(texto);
-    rotulo.textContent = "Resumen copiado";
-  } catch {
-    globalThis.getSelection?.()?.selectAllChildren(nodo);
-    rotulo.textContent = "Resumen seleccionado para copiar";
-  }
-}
 
 /**
  * Aplica (o retira, con `etapas` nulo) el revelado sobre una tarjeta. Solo
@@ -174,14 +163,6 @@ export function crearTarjetas({ onSelect, onPagina, onDesplazar, onAccion }) {
     }
     if (conteos.evidencia > 0) {
       botones.append(accionDeTarjeta(`Evidencia (${conteos.evidencia})`, id, () => onAccion?.(id, "evidencia")));
-    }
-    if (textoResumen !== null) {
-      const rotulo = elemento("span", { texto: "Copiar resumen" });
-      const copiar = elemento("button", { clase: "tarjeta-copiar", atributos: { type: "button" } });
-      copiar.append(rotulo, elemento("span", { clase: "solo-lectores", texto: ` de ${id}` }));
-      copiar.addEventListener("click", () => copiarResumen(textoResumen, resumen, rotulo));
-      copiar.addEventListener("blur", () => { rotulo.textContent = "Copiar resumen"; });
-      botones.append(copiar);
     }
     // Brillo decorativo de la etapa de estructura.
     const brillo = elemento("span", { clase: "tarjeta-brillo", atributos: { "data-part": "shimmer", "aria-hidden": "true" } });

@@ -511,10 +511,6 @@ button[aria-disabled="true"] {
   margin-left: auto;
 }
 
-.tarjeta-copiar {
-  font-size: var(--tam-meta);
-}
-
 /* --- Revelado progresivo (§7) ----------------------------------------------
  * Una sola tarjeta en `revealing`. Las etapas (0–1) se solapan: estructura
  * 0–22 %, cabecera 18–42 %, contenido 36–72 % y acciones 68–100 %. Solo

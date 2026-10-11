@@ -250,9 +250,9 @@ dirección indique otro.
   resumen).
 - **Tarjetas.** Una lista lineal de hasta 50 tarjetas por página, en orden de
   secuencia, con metadata breve, resumen, estado original y acciones de
-  relaciones, evidencia y «Copiar resumen». Seleccionar una tarjeta, un marcador
-  o un actor converge en el mismo ID y en el mismo inspector, sin mover el foco a
-  él. «Seguir recorrido» desplaza sólo el panel de tarjetas y se suspende al
+  relaciones y evidencia (sólo cuando el hito las declara). Seleccionar una
+  tarjeta, un marcador o un actor converge en el mismo ID y en el mismo
+  inspector, sin mover el foco a él. «Seguir recorrido» desplaza sólo el panel de tarjetas y se suspende al
   desplazar, al seleccionar manualmente o al interactuar con el inspector (foco,
   puntero o desplegar una sección); un botón lo retoma.
 - **Inspector.** Muestra el hito completo: tiempos con hora local, UTC y valor
@@ -329,8 +329,6 @@ En Vivo sólo lee: el visor no modifica el archivo para seguirlo.
 - 10 000 eventos por traza: con más, el visor declara en un diagnóstico que se
   muestran los primeros 10 000. Una traza de más de 8 MiB no se interpreta y
   queda un diagnóstico de error en su lugar.
-- «Copiar resumen» de cada tarjeta es una acción provisional: copia el resumen
-  declarado del hito y no sustituye a los botones de copia del inspector.
 
 ## Atajos de teclado
 

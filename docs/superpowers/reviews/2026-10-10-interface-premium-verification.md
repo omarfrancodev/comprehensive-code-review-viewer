@@ -47,8 +47,8 @@ Todos desde la raíz del worktree, con `PYTHONPATH=src` para Python.
 | `python -m pip wheel . --no-deps --wheel-dir <temporal>` | **No repetido en esta ejecución.** En la ejecución anterior (`78168ff`) se construyó `comprehensive_code_review_viewer-0.1.0-py3-none-any.whl`; ver «Hallazgo de empaquetado». La construcción desde una copia limpia la repite `tests/test_packaging.py`, que pasó en la suite Python de esta ejecución |
 
 Las 4 pruebas omitidas en Firefox son las que dependen de Chromium:
-`explorer-playback.spec.mjs` «copiar el resumen durante el revelado copia el texto
-completo», `inspector.spec.mjs` «copiar usa el valor completo», `views.spec.mjs`
+`explorer-playback.spec.mjs` «copiar el resumen desde el inspector durante el revelado
+copia el texto completo», `inspector.spec.mjs` «copiar usa el valor completo», `views.spec.mjs`
 «copiar ID copia el valor completo» y `perf.spec.mjs`.
 
 Chromium por archivo de especificación: a11y 6, acceptance 7, document-content 2,
@@ -178,10 +178,10 @@ publicación en este árbol.
   suite completa tres veces sobre `78168ff` y una vez sobre `2cdab5f`: todas
   terminaron con 267 pruebas OK, sin fallos ni errores. No se puede afirmar que
   esté resuelto: no se identificó qué prueba falló.
-- **«Copiar resumen» por tarjeta** es una acción provisional añadida en la
-  tarea 10 (aceptada como interina; su permanencia es una decisión pendiente del
-  usuario): copia el resumen declarado y convive con los botones de copia del
-  inspector.
+- **«Copiar resumen» por tarjeta** se añadió como acción interina en la tarea 10
+  y se eliminó por decisión del usuario tras la revisión final: la copia del
+  resumen queda sólo en el inspector, y las acciones de tarjeta son «Relaciones
+  (n)» y «Evidencia (n)» cuando el hito las declara.
 - **Rótulos de carga.** El indicador de carga tiene variantes de etiqueta estática
   según el motivo (sin conexión, datos no actualizados, esperando recarga),
   aceptadas durante la tarea 13; no se unificaron.

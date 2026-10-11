@@ -207,9 +207,11 @@ test.describe("revelado progresivo del elemento", () => {
     const botones = primera.locator('[data-part="action-buttons"]');
     await expect(botones).toHaveAttribute("inert", "");
     await expect(primera.locator('[data-part="actions"]')).not.toHaveAttribute("inert", /.*/);
-    const copiar = primera.locator(".tarjeta-copiar");
-    await copiar.evaluate((nodo) => nodo.focus());
-    await expect(copiar).not.toBeFocused();
+    // «Relaciones (1)»: E000002 declara `follows E000001`, así que la tarjeta de E000001 tiene esa acción.
+    const accion = botones.getByRole("button", { name: /^Relaciones \(1\)/ });
+    await expect(botones.locator("button")).toHaveCount(1);
+    await accion.evaluate((nodo) => nodo.focus());
+    await expect(accion).not.toBeFocused();
 
     // Tipo, estado original y hora siguen accesibles, seleccionables y fuera de todo subárbol inerte.
     const datos = await primera.locator('[data-part="actions"]').evaluate((pie) =>
@@ -242,8 +244,8 @@ test.describe("revelado progresivo del elemento", () => {
 
     await boton(page, "Mostrar tarjeta completa").click();
     await expect(botones).not.toHaveAttribute("inert", /.*/);
-    await copiar.focus();
-    await expect(copiar).toBeFocused();
+    await accion.focus();
+    await expect(accion).toBeFocused();
   });
 
   test("buscar parte del resumen aún oculto encuentra la tarjeta en revelado", async ({ page }) => {
@@ -261,7 +263,7 @@ test.describe("revelado progresivo del elemento", () => {
     await expect(tarjeta(page, "E000001")).toHaveAttribute("data-state", "revealing");
   });
 
-  test("copiar el resumen durante el revelado copia el texto completo", async ({ page, context, browserName }) => {
+  test("copiar el resumen desde el inspector durante el revelado copia el texto completo", async ({ page, context, browserName }) => {
     test.skip(browserName !== "chromium", "permisos de portapapeles solo en Chromium");
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     await abrirTraza(page);
@@ -271,7 +273,9 @@ test.describe("revelado progresivo del elemento", () => {
     const primera = tarjeta(page, "E000001");
     await expect(primera).toHaveAttribute("data-state", "revealing");
     await expect(primera.locator('[data-part="action-buttons"]')).not.toHaveAttribute("inert", /.*/);
-    await primera.getByRole("button", { name: /Copiar resumen/ }).click();
+    // El único «Copiar resumen» es el del inspector (la tarjeta ya no tiene uno propio).
+    await expect(primera.getByRole("button", { name: /Copiar resumen/ })).toHaveCount(0);
+    await page.locator("#inspector").getByRole("button", { name: "Copiar resumen", exact: true }).click();
     await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("Archivo sintético preparado");
   });
 

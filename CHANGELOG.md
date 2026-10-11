@@ -49,7 +49,6 @@ sido fusionado ni publicado.
   eventos); no son una medición de INP de usuarios reales.
 - Se acotan 50 tarjetas, 50 marcadores, 50 corridas por página y 10 000 eventos
   por traza.
-- «Copiar resumen» de cada tarjeta es una acción provisional.
 - La reconexión nativa con `Last-Event-ID` no se ejercitó en un navegador, y el
   zoom del 400 % se aproximó con un ancho de 320 px.
 
