@@ -19,6 +19,13 @@ test.afterAll(() => {
 });
 
 test.beforeEach(async ({ page }) => {
+  // Interfaz final: ninguna vista viola la política de contenido del servidor real.
+  await page.addInitScript(() => {
+    window.__violacionesCsp = [];
+    document.addEventListener("securitypolicyviolation", (evento) => {
+      window.__violacionesCsp.push(`${evento.violatedDirective} ${evento.blockedURI}`);
+    });
+  });
   await page.goto(servidor.url);
   await page.waitForSelector("#biblioteca .lista-revisiones button", { timeout: 20_000 });
 });
@@ -47,11 +54,21 @@ test("navega la biblioteca y abre una revisión", async ({ page }) => {
   await expect(page.locator("#revision")).toContainText("CR-1111111111111111aaaa");
 });
 
+test.afterEach(async ({ page }) => {
+  expect(await page.evaluate(() => window.__violacionesCsp ?? []).catch(() => [])).toEqual([]);
+});
+
 test("la trazabilidad llega del servidor y verifica su cadena", async ({ page }) => {
   await page.locator(".lista-revisiones button").first().click();
   await page.getByRole("tab", { name: "Trazabilidad" }).click();
   await expect(page.locator("#revision")).toContainText("cadena verificada");
   await expect(page.locator('[data-part="cards"] li[data-event-id]').first()).toContainText("E000001");
+  // Shell final: el inspector vive en su región y muestra el último hito sin autoplay.
+  await expect(page.locator('#inspector [data-part="inspector"]')).toHaveAttribute("data-event-id", "E000003");
+  await expect(page.locator('[data-part="cards"] li[aria-current="true"]')).toHaveAttribute("data-event-id", "E000003");
+  await expect(page.getByRole("button", { name: "Reproducir", exact: true })).toBeVisible();
+  // Una revisión cerrada no habilita En Vivo aunque el canal esté conectado.
+  await expect(page.getByRole("button", { name: "En Vivo", exact: true })).toBeDisabled();
 });
 
 test("el informe Markdown se renderiza sin peticiones remotas", async ({ page }) => {

@@ -54,6 +54,21 @@ export function fixtureOperation(run, operation) {
 }
 
 /**
+ * Huella de solo lectura de `ruta` (una corrida o la raíz completa): por cada
+ * archivo, `[bytes, sha256, mtime_ns]`. La calcula el mismo `archive_inventory`
+ * de las pruebas Python; no escribe nada.
+ */
+export function inventory(ruta) {
+  const result = spawnSync("python", ["-c",
+    "import sys,json; from pathlib import Path; sys.path.insert(0,'tests'); "
+    + "from fixtures import archive_inventory; "
+    + "print(json.dumps(archive_inventory(Path(sys.argv[1])),sort_keys=True))", ruta],
+    { cwd: RAIZ, encoding: "utf8", env: ENTORNO_PYTHON });
+  if (result.status !== 0) throw new Error(result.stderr);
+  return JSON.parse(result.stdout);
+}
+
+/**
  * Arranca el servidor y devuelve `{ url, base, raiz, stop }`.
  * La URL incluye el token de capacidad en el fragmento, como en el uso real.
  */
