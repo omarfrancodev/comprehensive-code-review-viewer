@@ -19,15 +19,27 @@ test.afterAll(() => {
 });
 
 test.beforeEach(async ({ page }) => {
+  // Interfaz final: ninguna vista viola la política de contenido del servidor real.
+  await page.addInitScript(() => {
+    window.__violacionesCsp = [];
+    document.addEventListener("securitypolicyviolation", (evento) => {
+      window.__violacionesCsp.push(`${evento.violatedDirective} ${evento.blockedURI}`);
+    });
+  });
   await page.goto(servidor.url);
   await page.waitForSelector("#biblioteca .lista-revisiones button", { timeout: 20_000 });
 });
 
 test("establece la sesión con el token del fragmento", async ({ page }) => {
   // En Windows la ruta temporal puede aparecer con su alias corto (8.3): se
-  // compara el nombre del directorio, que es estable en ambos casos.
+  // compara el nombre del directorio, que es estable en ambos casos. La
+  // cabecera muestra la etiqueta compacta; el diálogo, la ruta completa.
   await expect(page.locator("#raiz")).toContainText("archivo");
-  await expect(page.locator("#raiz")).toContainText("(explicit)");
+  await page.locator("#raiz").click();
+  const contexto = page.getByRole("dialog", { name: "Contexto de raíz" });
+  await expect(contexto).toContainText("archivo");
+  await expect(contexto).toContainText("explicit");
+  await page.keyboard.press("Escape");
   // El fragmento se limpia tras el canje.
   await expect(page).toHaveURL(/\/$/);
   expect(page.url()).not.toContain("token");
@@ -36,17 +48,27 @@ test("establece la sesión con el token del fragmento", async ({ page }) => {
 test("navega la biblioteca y abre una revisión", async ({ page }) => {
   await expect(page.locator("#biblioteca")).toContainText("cerrada");
   await page.locator(".lista-revisiones button").first().click();
-  await expect(page.locator("#revision header.revision-encabezado h2")).toHaveText(
+  await expect(page.locator("#cabecera-revision header.revision-encabezado h2")).toHaveText(
     "Revisión sintética de validación de entrada",
   );
   await expect(page.locator("#revision")).toContainText("CR-1111111111111111aaaa");
+});
+
+test.afterEach(async ({ page }) => {
+  expect(await page.evaluate(() => window.__violacionesCsp ?? []).catch(() => [])).toEqual([]);
 });
 
 test("la trazabilidad llega del servidor y verifica su cadena", async ({ page }) => {
   await page.locator(".lista-revisiones button").first().click();
   await page.getByRole("tab", { name: "Trazabilidad" }).click();
   await expect(page.locator("#revision")).toContainText("cadena verificada");
-  await expect(page.locator(".hitos .hito").first()).toContainText("E000001");
+  await expect(page.locator('[data-part="cards"] li[data-event-id]').first()).toContainText("E000001");
+  // Shell final: el inspector vive en su región y muestra el último hito sin autoplay.
+  await expect(page.locator('#inspector [data-part="inspector"]')).toHaveAttribute("data-event-id", "E000003");
+  await expect(page.locator('[data-part="cards"] li[aria-current="true"]')).toHaveAttribute("data-event-id", "E000003");
+  await expect(page.getByRole("button", { name: "Reproducir", exact: true })).toBeVisible();
+  // Una revisión cerrada no habilita En Vivo aunque el canal esté conectado.
+  await expect(page.getByRole("button", { name: "En Vivo", exact: true })).toBeDisabled();
 });
 
 test("el informe Markdown se renderiza sin peticiones remotas", async ({ page }) => {

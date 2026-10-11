@@ -42,11 +42,32 @@ Opciones: `--root PATH`, `--port N`, `--no-browser` y `--version`. La raíz se
 selecciona con `--root`, luego `CCR_ARTIFACTS_DIR`, y por último
 `~/.comprehensive-code-review/reviews`. Consulta [docs/usage.md](docs/usage.md).
 
-La primera versión incluye biblioteca, ficha de revisión, hallazgos, validación,
-Markdown, documentos, cierre e integridad, seguimiento en vivo y reproducción de
-eventos. La disponibilidad de cada vista depende de los artefactos existentes: una
-corrida en curso se muestra con lo que hay y con su diagnóstico, nunca inventando
-lo que falta.
+La versión publicada 0.1.0 incluye biblioteca, ficha de revisión, hallazgos,
+validación, Markdown, documentos, cierre e integridad, seguimiento en vivo y
+reproducción de eventos. La disponibilidad de cada vista depende de los artefactos
+existentes: una corrida en curso se muestra con lo que hay y con su diagnóstico,
+nunca inventando lo que falta.
+
+## Interfaz rediseñada (sin publicar)
+
+La rama de desarrollo `feat/interfaz-premium` rediseña la interfaz de la 0.1.0
+sin cambiar las garantías de solo lectura ni las dependencias de ejecución. Todavía
+no forma parte de una versión publicada. Resumen:
+
+- Biblioteca compacta con búsqueda, filtros tipados, chips y paginación; tema
+  claro, oscuro o del sistema, densidad cómoda o compacta y movimiento reducido.
+- Siete vistas (Resumen, Hallazgos, Validación, Seguimiento, Documentos,
+  Trazabilidad y Archivo) con navegación local `?run&tab&event`.
+- Explorador de trazabilidad con franja de actores, línea de tiempo en ventanas de
+  50, tarjetas, inspector con JSON original, relaciones navegables y evidencia
+  enlazada sólo por inventario.
+- Revelado progresivo de cada tarjeta y modo En Vivo, disponible sólo mientras el
+  cierre declara `processing`, con cola de «nuevos sin presentar».
+- Sin Node, CDN ni framework en tiempo de ejecución; la política de contenido no
+  admite estilos ni scripts en línea.
+
+El detalle está en [docs/usage.md](docs/usage.md) y la evidencia de verificación
+en [el informe de la interfaz premium](docs/superpowers/reviews/2026-10-10-interface-premium-verification.md).
 
 ## Verificación
 
@@ -76,10 +97,10 @@ y en [contracts/sources.md](contracts/sources.md).
 La implementación cuenta con pruebas de backend, interfaz, navegador y
 empaquetado. Las correcciones y la evidencia de la validación se documentan en
 [el informe de implementación](docs/superpowers/reviews/2026-10-10-implementation-verification.md).
-La versión 0.1.0 conserva la interfaz inicial. Hay mejoras pendientes de densidad,
-jerarquía visual, presentación de identificadores largos y exploración de la
-trazabilidad. La publicación actual permite probar esa base; el rediseño se
-documenta y revisa por separado.
+La versión 0.1.0 publicada conserva la interfaz inicial; el rediseño descrito
+arriba está en una rama de desarrollo, pendiente de la revisión del usuario, y su
+fusión y publicación requieren su autorización. La evidencia y los límites de esa
+verificación se registran en el informe enlazado, no en este resumen.
 
 ## Licencia
 

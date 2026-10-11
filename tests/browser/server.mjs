@@ -14,6 +14,9 @@ import { fileURLToPath } from "node:url";
 const aqui = dirname(fileURLToPath(import.meta.url));
 const RAIZ = resolve(aqui, "..", "..");
 
+/** Entorno de Python que resuelve `ccr_viewer` desde el árbol de trabajo, no desde site-packages. */
+const ENTORNO_PYTHON = { ...process.env, PYTHONPATH: join(RAIZ, "src") };
+
 /** Crea un archivo sintético aislado y devuelve su ruta. */
 export function crearArchivoSintetico(variant) {
   const base = mkdtempSync(join(tmpdir(), "ccr-aceptacion-"));
@@ -29,7 +32,7 @@ export function crearArchivoSintetico(variant) {
       raiz,
       variant,
     ],
-    { cwd: RAIZ, encoding: "utf8" },
+    { cwd: RAIZ, encoding: "utf8", env: ENTORNO_PYTHON },
   );
   if (resultado.status !== 0) {
     throw new Error(`no se pudo crear el archivo: ${resultado.stderr}`);
@@ -45,7 +48,22 @@ export function fixtureOperation(run, operation) {
     + "run=Path(sys.argv[1]); op=sys.argv[2]; "
     + "advance_fixture(run,op) if op != 'inventory' else None; "
     + "print(json.dumps(archive_inventory(run),sort_keys=True))", run, operation],
-    { cwd: RAIZ, encoding: "utf8" });
+    { cwd: RAIZ, encoding: "utf8", env: ENTORNO_PYTHON });
+  if (result.status !== 0) throw new Error(result.stderr);
+  return JSON.parse(result.stdout);
+}
+
+/**
+ * Huella de solo lectura de `ruta` (una corrida o la raíz completa): por cada
+ * archivo, `[bytes, sha256, mtime_ns]`. La calcula el mismo `archive_inventory`
+ * de las pruebas Python; no escribe nada.
+ */
+export function inventory(ruta) {
+  const result = spawnSync("python", ["-c",
+    "import sys,json; from pathlib import Path; sys.path.insert(0,'tests'); "
+    + "from fixtures import archive_inventory; "
+    + "print(json.dumps(archive_inventory(Path(sys.argv[1])),sort_keys=True))", ruta],
+    { cwd: RAIZ, encoding: "utf8", env: ENTORNO_PYTHON });
   if (result.status !== 0) throw new Error(result.stderr);
   return JSON.parse(result.stdout);
 }
@@ -58,7 +76,7 @@ export async function startFixtureServer(variant) {
   const { raiz, base, run } = crearArchivoSintetico(variant);
   const proceso = spawn("python", ["-m", "ccr_viewer", "--root", raiz, "--no-browser"], {
     cwd: RAIZ,
-    env: { ...process.env, PYTHONUNBUFFERED: "1" },
+    env: { ...ENTORNO_PYTHON, PYTHONUNBUFFERED: "1" },
   });
 
   const url = await new Promise((resolver, rechazar) => {

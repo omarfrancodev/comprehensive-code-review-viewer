@@ -20,7 +20,7 @@ test("la ficha conserva declaraciones y los hitos muestran hora local con detall
   await expect(page.locator("#revision")).toContainText("claude-code");
   await expect(page.locator("#revision")).toContainText("dependency-original");
   await page.getByRole("tab", { name: "Trazabilidad" }).click();
-  const time = page.locator(".hitos time").first();
+  const time = page.locator('[data-part="cards"] time').first();
   await expect(time).toHaveAttribute("datetime", /2026-/);
   await expect(time).toHaveAttribute("title", /UTC.*Origen:/);
 });
@@ -33,9 +33,9 @@ test("filtrar y limpiar solicitan una página nueva", async ({ page }) => {
     queries.push(query.get("q"));
     return respond(route, { items: query.has("q") ? [] : [REVISION_SINTETICA.summary], total: query.has("q") ? 0 : 1 });
   });
-  await page.locator('[name="q"]').fill("ausente");
-  await page.getByRole("button", { name: "Filtrar", exact: true }).click();
-  await expect(page.locator("#biblioteca")).toContainText("Sin revisiones");
+  await page.getByRole("searchbox", { name: "Buscar revisiones" }).fill("ausente");
+  await page.getByRole("searchbox", { name: "Buscar revisiones" }).press("Enter");
+  await expect(page.locator("#biblioteca")).toContainText("Ninguna revisión coincide");
   expect(queries).toContain("ausente");
   await page.getByRole("button", { name: "Limpiar", exact: true }).click();
   await expect(page.locator(".lista-revisiones button")).toHaveCount(1);
@@ -85,16 +85,22 @@ test("autoplay mueve el hito visible y el teclado conserva controles", async ({ 
   await page.route("**/api/runs/*/trace", route => respond(route, TRAZA_SINTETICA));
   await page.locator(".lista-revisiones button").first().click();
   await page.getByRole("tab", { name: "Trazabilidad" }).click();
-  await page.getByRole("button", { name: "▶ Reproducir", exact: true }).click();
-  await expect(page.locator(".hito--seleccionado")).toContainText("E000002", { timeout: 1500 });
+  const seleccionada = page.locator('[data-part="cards"] li[aria-current="true"]');
+  // Desde el último «Reproducir» no tiene siguiente: «Reiniciar» vuelve a E000001
+  // y el recorrido avanza tras un paso de 2350 ms a 1×.
+  await page.getByRole("button", { name: "Reiniciar", exact: true }).click();
+  await expect(seleccionada).toHaveAttribute("data-event-id", "E000001");
+  await page.getByRole("button", { name: "Reproducir", exact: true }).click();
+  await expect(seleccionada).toHaveAttribute("data-event-id", "E000002", { timeout: 4000 });
   await page.getByRole("button", { name: "Pausar", exact: true }).click();
-  const controls = page.getByRole("group", { name: "Controles de reproducción" });
-  await controls.focus();
+  const slider = page.getByRole("slider", { name: "Posición del recorrido" });
+  await slider.focus();
   await page.keyboard.press("Home");
-  await expect(page.locator(".hito--seleccionado")).toContainText("E000001");
+  await expect(seleccionada).toHaveAttribute("data-event-id", "E000001");
   await page.keyboard.press("ArrowRight");
-  await expect(page.locator(".hito--seleccionado")).toContainText("E000002");
-  await expect(page.getByRole("slider", { name: "Evento seleccionado" })).toHaveValue("1");
+  await expect(seleccionada).toHaveAttribute("data-event-id", "E000002");
+  await expect(slider).toHaveValue("1");
+  await expect(page.getByRole("group", { name: "Controles de reproducción" })).toBeVisible();
 });
 
 test("un aviso recarga la revisión final y conserva la pestaña seleccionada", async ({ page }) => {

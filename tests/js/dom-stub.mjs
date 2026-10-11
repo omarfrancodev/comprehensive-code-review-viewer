@@ -36,10 +36,11 @@ function crearNodo(tag) {
       return Object.hasOwn(this.atributos, nombre) ? this.atributos[nombre] : null;
     },
     addEventListener(tipo, funcion) {
-      (this.oyentes[tipo] ??= []).push(funion);
+      (this.oyentes[tipo] ??= []).push(funcion);
     },
+    // Devuelve lo que retornan los oyentes: las pruebas esperan los asíncronos.
     dispatch(tipo, evento = {}) {
-      for (const funcion of this.oyentes[tipo] ?? []) funcion(evento);
+      return (this.oyentes[tipo] ?? []).map((funcion) => funcion(evento));
     },
     classList: {
       add(clase) {

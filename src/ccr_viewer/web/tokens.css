@@ -1,0 +1,160 @@
+/*
+ * Tokens visuales del visor.
+ *
+ * Grafito y neutros para superficies; índigo para selección, foco y acciones.
+ * Los colores semánticos siempre acompañan a un texto o icono. El contraste de
+ * cada tema lo comprueba tests/js/contrast.test.mjs: texto ≥ 4.5:1, controles
+ * y foco ≥ 3:1. Los temas forzados ([data-theme]) repiten los valores del
+ * sistema para que la preferencia local gane a la del sistema operativo.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  --fondo: #f5f6f8;
+  --superficie: #ffffff;
+  --superficie-hundida: #eef0f3;
+  --texto: #1b1f24;
+  --texto-suave: #545d68;
+  --borde: #d5d9df;
+  --borde-control: #858d98;
+  --acento: #4338ca;
+  --acento-contraste: #ffffff;
+  --acento-suave: #e8e8fb;
+  --foco: #4f46e5;
+  --ok: #1a7f37;
+  --aviso: #8a5a00;
+  --error: #b42318;
+  --sombra: 0 12px 32px rgb(15 17 21 / 18%);
+
+  /* Escalas: espacio 4/8/12/16/24/32 px y radios 6/10/14 px. */
+  --espacio-1: 4px;
+  --espacio-2: 8px;
+  --espacio-3: 12px;
+  --espacio-4: 16px;
+  --espacio-5: 24px;
+  --espacio-6: 32px;
+  --radio-1: 6px;
+  --radio-2: 10px;
+  --radio-3: 14px;
+
+  /* Tipografía del sistema; monoespaciada para IDs, rutas y comandos. */
+  --fuente: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --fuente-mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --tam-texto: 0.9375rem;
+  --tam-meta: 0.8125rem;
+  --tam-pequeno: 0.75rem;
+  --tam-titulo: 1.0625rem;
+  --interlineado: 1.5;
+
+  /* Densidad cómoda (por omisión): varía relleno y separación. */
+  --relleno-panel: var(--espacio-4);
+  --relleno-control-x: var(--espacio-3);
+  --relleno-control-y: var(--espacio-1);
+  --separacion: var(--espacio-3);
+  --alto-control: 32px;
+
+  /* Movimiento: duraciones cortas que se anulan con movimiento reducido. */
+  --duracion-corta: 160ms;
+  --duracion-media: 240ms;
+  /* Explorador (§7): decisiones de diseño, nunca tiempos de ejecución. */
+  --duracion-cursor: 420ms;
+  --duracion-inspector: 170ms;
+  --duracion-pulso: 560ms;
+  --duracion-brillo: 1200ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --fondo: #0f1115;
+    --superficie: #171a20;
+    --superficie-hundida: #1f232b;
+    --texto: #e6e8eb;
+    --texto-suave: #a3abb6;
+    --borde: #2d323b;
+    --borde-control: #6f7884;
+    --acento: #a5b4fc;
+    --acento-contraste: #111827;
+    --acento-suave: #262a4a;
+    --foco: #818cf8;
+    --ok: #57c776;
+    --aviso: #d9a93a;
+    --error: #f47c72;
+    --sombra: 0 12px 32px rgb(0 0 0 / 50%);
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --fondo: #f5f6f8;
+  --superficie: #ffffff;
+  --superficie-hundida: #eef0f3;
+  --texto: #1b1f24;
+  --texto-suave: #545d68;
+  --borde: #d5d9df;
+  --borde-control: #858d98;
+  --acento: #4338ca;
+  --acento-contraste: #ffffff;
+  --acento-suave: #e8e8fb;
+  --foco: #4f46e5;
+  --ok: #1a7f37;
+  --aviso: #8a5a00;
+  --error: #b42318;
+  --sombra: 0 12px 32px rgb(15 17 21 / 18%);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --fondo: #0f1115;
+  --superficie: #171a20;
+  --superficie-hundida: #1f232b;
+  --texto: #e6e8eb;
+  --texto-suave: #a3abb6;
+  --borde: #2d323b;
+  --borde-control: #6f7884;
+  --acento: #a5b4fc;
+  --acento-contraste: #111827;
+  --acento-suave: #262a4a;
+  --foco: #818cf8;
+  --ok: #57c776;
+  --aviso: #d9a93a;
+  --error: #f47c72;
+  --sombra: 0 12px 32px rgb(0 0 0 / 50%);
+}
+
+/* Densidad compacta: menos relleno, sin bajar de 24 × 24 px por objetivo. */
+:root[data-density="compact"] {
+  --relleno-panel: var(--espacio-3);
+  --relleno-control-x: var(--espacio-2);
+  --relleno-control-y: 2px;
+  --separacion: var(--espacio-2);
+  --alto-control: 28px;
+}
+
+/* Pantallas táctiles: 44 px para controles principales y acciones de icono. */
+@media (pointer: coarse) {
+  :root,
+  :root[data-density="compact"] {
+    --alto-control: 44px;
+  }
+}
+
+:root[data-motion="reduce"] {
+  --duracion-corta: 0ms;
+  --duracion-media: 0ms;
+  --duracion-cursor: 0ms;
+  --duracion-inspector: 0ms;
+  --duracion-pulso: 0ms;
+  --duracion-brillo: 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duracion-corta: 0ms;
+    --duracion-media: 0ms;
+    --duracion-cursor: 0ms;
+    --duracion-inspector: 0ms;
+    --duracion-pulso: 0ms;
+    --duracion-brillo: 0ms;
+  }
+}

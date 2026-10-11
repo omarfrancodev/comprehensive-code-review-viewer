@@ -22,11 +22,23 @@ export async function bootstrapSession(fragment) {
   return true;
 }
 
+/**
+ * Devuelve `data` o lanza un `Error` cuyo mensaje es el del sobre de la API.
+ * El error lleva además `status` (HTTP) y `code` (p. ej. `unknown_id`) para
+ * que quien llama distinga una corrida ausente de un fallo de lectura.
+ */
 async function unwrap(response) {
-  const payload = await response.json();
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch (error) {
+    if (response.ok) throw error;
+  }
   if (!response.ok) {
-    const message = payload?.error?.message ?? "Error inesperado.";
-    throw new Error(message);
+    const error = new Error(payload?.error?.message ?? "Error inesperado.");
+    error.status = response.status;
+    error.code = typeof payload?.error?.code === "string" ? payload.error.code : null;
+    throw error;
   }
   return payload.data;
 }

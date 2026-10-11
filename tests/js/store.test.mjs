@@ -96,6 +96,161 @@ describe("createStore", () => {
   });
 });
 
+describe("shell: preferencias, selección y conexión", () => {
+  it("el estado inicial no conserva `theme` y parte de preferencias por omisión", () => {
+    const state = createStore().getState();
+    assert.equal("theme" in state, false);
+    assert.deepEqual(state.prefs, { theme: "system", density: "comfortable", motion: "system" });
+    assert.equal(state.selectedEventId, null);
+    assert.equal(state.connection, "connecting");
+  });
+
+  it("setPrefs actualiza prefs", () => {
+    const store = createStore();
+    store.dispatch({ type: "setPrefs", prefs: { theme: "dark", density: "compact", motion: "reduce" } });
+    assert.deepEqual(store.getState().prefs, { theme: "dark", density: "compact", motion: "reduce" });
+  });
+
+  it("selectRun reinicia selectedEventId y tab a «ficha»", () => {
+    const store = createStore({ selectedRun: "a", tab: "hallazgos", selectedEventId: "E000002" });
+    store.dispatch({ type: "selectRun", key: "b" });
+    const state = store.getState();
+    assert.equal(state.selectedRun, "b");
+    assert.equal(state.tab, "ficha");
+    assert.equal(state.selectedEventId, null);
+    assert.equal(state.view, null);
+  });
+
+  it("selectRun respeta una pestaña y un hito explícitos", () => {
+    const store = createStore({ selectedRun: "a", tab: "ficha" });
+    store.dispatch({ type: "selectRun", key: "b", tab: "trazabilidad", eventId: "E000003" });
+    assert.equal(store.getState().tab, "trazabilidad");
+    assert.equal(store.getState().selectedEventId, "E000003");
+  });
+
+  it("selectRun ignora una pestaña fuera del vocabulario", () => {
+    const store = createStore({ selectedRun: "a" });
+    store.dispatch({ type: "selectRun", key: "b", tab: "inventada" });
+    assert.equal(store.getState().tab, "ficha");
+  });
+
+  it("selectEvent guarda el ID", () => {
+    const store = createStore({ selectedRun: "a" });
+    store.dispatch({ type: "selectEvent", eventId: "E000001" });
+    assert.equal(store.getState().selectedEventId, "E000001");
+    store.dispatch({ type: "selectEvent", eventId: null });
+    assert.equal(store.getState().selectedEventId, null);
+  });
+
+  it("setTab conserva el hito seleccionado de la corrida", () => {
+    const store = createStore({ selectedRun: "a", selectedEventId: "E000002" });
+    store.dispatch({ type: "setTab", tab: "hallazgos" });
+    assert.equal(store.getState().selectedEventId, "E000002");
+  });
+
+  it("setConnection registra solo estados conocidos", () => {
+    const store = createStore();
+    store.dispatch({ type: "setConnection", state: "connected" });
+    assert.equal(store.getState().connection, "connected");
+    store.dispatch({ type: "setConnection", state: "disconnected" });
+    assert.equal(store.getState().connection, "disconnected");
+    store.dispatch({ type: "setConnection", state: "inventado" });
+    assert.equal(store.getState().connection, "disconnected");
+  });
+});
+
+describe("biblioteca: filtros, paginación y fallos de recarga", () => {
+  const pagina = (n, extra = {}) => ({
+    items: Array.from({ length: n }, (_, i) => ({ key: `k${i}` })),
+    total: n,
+    offset: 0,
+    limit: 50,
+    ...extra,
+  });
+
+  it("libraryFailed conserva library.items y marca libraryStale", () => {
+    const store = createStore();
+    store.dispatch({ type: "libraryLoaded", library: pagina(2), offset: 0 });
+    const antes = store.getState().library;
+    store.dispatch({ type: "libraryFailed", error: "sin red" });
+    const estado = store.getState();
+    assert.equal(estado.library, antes);
+    assert.equal(estado.library.items.length, 2);
+    assert.equal(estado.libraryStale, true);
+    assert.equal(estado.libraryError, "sin red");
+    assert.equal(estado.loading, false);
+    assert.equal(estado.libraryReady, true);
+  });
+
+  it("libraryLoaded limpia libraryStale y el error de la biblioteca", () => {
+    const store = createStore();
+    store.dispatch({ type: "libraryFailed", error: "sin red" });
+    assert.equal(store.getState().libraryReady, false, "un fallo sin carga previa no la da por lista");
+    store.dispatch({ type: "libraryLoaded", library: pagina(1), offset: 0 });
+    const estado = store.getState();
+    assert.equal(estado.libraryStale, false);
+    assert.equal(estado.libraryError, null);
+    assert.equal(estado.libraryReady, true);
+  });
+
+  it("un error de revisión (setError) no toca la biblioteca", () => {
+    const store = createStore();
+    store.dispatch({ type: "libraryLoaded", library: pagina(1), offset: 0 });
+    const antes = store.getState();
+    store.dispatch({ type: "setError", error: "lectura fallida" });
+    const estado = store.getState();
+    assert.equal(estado.library, antes.library);
+    assert.equal(estado.libraryStale, false);
+    assert.equal(estado.libraryError, null);
+  });
+
+  it("setFilters reinicia offset a 0 y normaliza", () => {
+    const store = createStore({ offset: 100 });
+    store.dispatch({ type: "setFilters", filters: { q: " a ", verdict: "" } });
+    assert.deepEqual(store.getState().filters, { q: "a" });
+    assert.equal(store.getState().offset, 0);
+  });
+
+  it("setFilters idénticos no cambian el estado ni la página", () => {
+    const store = createStore({ filters: { q: "a" }, offset: 50 });
+    const antes = store.getState();
+    store.dispatch({ type: "setFilters", filters: { q: "a " } });
+    assert.equal(store.getState(), antes);
+  });
+
+  it("resetFilters limpia filtros y offset; sin filtros ni página no cambia", () => {
+    const store = createStore({ filters: { q: "a" }, offset: 50 });
+    store.dispatch({ type: "resetFilters" });
+    assert.deepEqual(store.getState().filters, {});
+    assert.equal(store.getState().offset, 0);
+    const antes = store.getState();
+    store.dispatch({ type: "resetFilters" });
+    assert.equal(store.getState(), antes);
+  });
+
+  it("setOffset con el mismo valor no cambia el estado", () => {
+    const store = createStore({ offset: 50 });
+    const antes = store.getState();
+    store.dispatch({ type: "setOffset", offset: 50 });
+    assert.equal(store.getState(), antes);
+    store.dispatch({ type: "setOffset", offset: 0 });
+    assert.equal(store.getState().offset, 0);
+  });
+
+  it("libraryLoaded acerca el offset a la última página existente", () => {
+    const store = createStore({ offset: 100 });
+    store.dispatch({ type: "libraryLoaded", library: { items: [], total: 51, offset: 100, limit: 50 }, offset: 100 });
+    assert.equal(store.getState().offset, 50);
+  });
+
+  it("retryLibrary incrementa el contador de reintentos explícitos", () => {
+    const store = createStore();
+    store.dispatch({ type: "retryLibrary" });
+    store.dispatch({ type: "retryLibrary" });
+    assert.equal(store.getState().libraryRetry, 2);
+  });
+});
+
 describe("reduce", () => {
   it("acumula los avisos nuevos sin duplicar por cursor", () => {
     let state = reduce({ newEventCount: 0 }, { type: "notice", notice: { kind: "run_changed" } });
@@ -108,5 +263,48 @@ describe("reduce", () => {
     let state = reduce({ newEventCount: 3 }, { type: "notice", notice: { kind: "run_changed" } });
     state = reduce(state, { type: "notice", notice: { kind: "resync" } });
     assert.equal(state.newEventCount, 0);
+  });
+});
+describe("destino de navegación entre vistas (openTarget)", () => {
+  it("el estado inicial no tiene destino", () => {
+    assert.equal(createStore().getState().target, null);
+  });
+
+  it("openTarget abre la pestaña del destino y lo guarda", () => {
+    const store = createStore({ selectedRun: "a", tab: "hallazgos" });
+    store.dispatch({ type: "openTarget", tab: "validacion", id: "C001" });
+    assert.equal(store.getState().tab, "validacion");
+    assert.deepEqual(store.getState().target, { tab: "validacion", id: "C001" });
+  });
+
+  it("openTarget ignora una pestaña desconocida o un ID que no es texto", () => {
+    const store = createStore({ selectedRun: "a", tab: "hallazgos" });
+    const antes = store.getState();
+    store.dispatch({ type: "openTarget", tab: "inventada", id: "C001" });
+    store.dispatch({ type: "openTarget", tab: "validacion", id: 7 });
+    store.dispatch({ type: "openTarget", tab: "validacion", id: "" });
+    assert.equal(store.getState(), antes);
+  });
+
+  it("clearTarget lo limpia y, sin destino, no cambia el estado", () => {
+    const store = createStore({ selectedRun: "a" });
+    store.dispatch({ type: "openTarget", tab: "hallazgos", id: "F001" });
+    store.dispatch({ type: "clearTarget" });
+    assert.equal(store.getState().target, null);
+    const antes = store.getState();
+    store.dispatch({ type: "clearTarget" });
+    assert.equal(store.getState(), antes);
+  });
+
+  it("un destino no sobrevive a otra pestaña ni a otra revisión", () => {
+    const store = createStore({ selectedRun: "a" });
+    store.dispatch({ type: "openTarget", tab: "validacion", id: "C001" });
+    store.dispatch({ type: "setTab", tab: "validacion" });
+    assert.deepEqual(store.getState().target, { tab: "validacion", id: "C001" }, "la misma pestaña lo conserva");
+    store.dispatch({ type: "setTab", tab: "archivo" });
+    assert.equal(store.getState().target, null);
+    store.dispatch({ type: "openTarget", tab: "hallazgos", id: "F001" });
+    store.dispatch({ type: "selectRun", key: "b" });
+    assert.equal(store.getState().target, null);
   });
 });

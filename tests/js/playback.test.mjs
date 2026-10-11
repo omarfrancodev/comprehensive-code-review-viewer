@@ -1,32 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { createPlayback, INTERVALO_BASE_MS, VELOCIDADES } from "../../src/ccr_viewer/web/playback.js";
-
-function relojFalso() {
-  let ahora = 0;
-  const pendientes = [];
-  return {
-    ahora: () => ahora,
-    programar: (fn, ms) => {
-      pendientes.push({ fn, ms, a: ahora });
-      return pendientes.length;
-    },
-    cancelar: () => {
-      pendientes.length = 0;
-    },
-    avanzar: (ms) => {
-      ahora += ms;
-      const vencidas = pendientes.filter((p) => ahora - p.a >= p.ms);
-      for (const pendiente of vencidas) {
-        const indice = pendientes.indexOf(pendiente);
-        if (indice >= 0) pendientes.splice(indice, 1);
-        pendiente.fn();
-      }
-    },
-    pendientes: () => pendientes.length,
-  };
-}
+import * as playback from "../../src/ccr_viewer/web/playback.js";
+import { createPlayback, PASO_BASE_MS, REVELADO_BASE_MS, VELOCIDADES } from "../../src/ccr_viewer/web/playback.js";
+import { buildTraceModel } from "../../src/ccr_viewer/web/trace-model.js";
+import { createFakeClock } from "./fake-clock.mjs";
 
 const evento = (id, sequence, occurred_at, recorded_at) => ({
   event_id: id,
@@ -49,42 +27,49 @@ const TRAZA = {
   diagnostics: [],
 };
 
+const TRES = [
+  ...TRAZA.events,
+  evento("E000003", 3, null, "2026-09-01T12:00:20+00:00"),
+];
+
 describe("createPlayback", () => {
-  it("empieza en vivo sobre el último evento coherente", () => {
-    const reloj = relojFalso();
+  it("expone las duraciones de diseño y elimina el intervalo de 800 ms", () => {
+    assert.equal(PASO_BASE_MS, 2350);
+    assert.equal(REVELADO_BASE_MS, 1800);
+    assert.equal("INTERVALO_BASE_MS" in playback, false);
+  });
+
+  it("inicia en pausa con el último evento seleccionado, sin autoplay", () => {
+    const reloj = createFakeClock();
     const p = createPlayback(TRAZA.events, { clock: reloj });
-    assert.equal(p.state().mode, "live");
+    assert.equal(p.state().mode, "paused");
     assert.equal(p.state().selectedEventId, "E000002");
     assert.equal(p.state().newEvents, 0);
+    assert.equal(p.state().stepElapsedMs, 0);
+    assert.equal(p.state().stepMs, 2350);
+    assert.equal(reloj.pending(), 0, "no programa nada al crearse");
+    reloj.advance(10000);
+    assert.equal(p.state().selectedEventId, "E000002");
   });
 
   it("tolera una traza vacía o de un solo evento", () => {
-    const vacia = createPlayback([], { clock: relojFalso() });
-    // Sin eventos no hay nada seleccionado: se dice null, no un identificado falso.
+    const vacia = createPlayback([], { clock: createFakeClock() });
+    // Sin eventos no hay nada seleccionado: se dice null, no un identificador falso.
     assert.equal(vacia.state().selectedEventId, null);
     vacia.step(1);
     vacia.step(-1);
     vacia.play();
     assert.equal(vacia.state().selectedEventId, null);
+    assert.equal(vacia.state().mode, "paused");
 
-    const simple = createPlayback([TRAZA.events[0]], { clock: relojFalso() });
+    const simple = createPlayback([TRAZA.events[0]], { clock: createFakeClock() });
     assert.equal(simple.state().selectedEventId, "E000001");
     simple.step(-1);
     assert.equal(simple.state().selectedEventId, "E000001", "no retrocede antes del inicio");
   });
 
-  it("pausa sin perder el evento seleccionado", () => {
-    const reloj = relojFalso();
-    const p = createPlayback(TRAZA.events, { clock: reloj });
-    p.pause();
-    p.step(-1);
-    assert.equal(p.state().mode, "paused");
-    assert.equal(p.state().selectedEventId, "E000001");
-  });
-
   it("avanza y retrocede por el orden de grabación", () => {
-    const p = createPlayback(TRAZA.events, { clock: relojFalso() });
-    p.pause();
+    const p = createPlayback(TRAZA.events, { clock: createFakeClock() });
     p.seek("E000001");
     p.step(1);
     assert.equal(p.state().selectedEventId, "E000002");
@@ -92,98 +77,207 @@ describe("createPlayback", () => {
     assert.equal(p.state().selectedEventId, "E000002", "no avanza más allá del final");
     p.step(-2);
     assert.equal(p.state().selectedEventId, "E000001");
+    assert.equal(p.state().mode, "paused");
   });
 
   it("conserva el orden canónico y el temporal", () => {
-    const p = createPlayback(TRAZA.events, { clock: relojFalso() });
+    const p = createPlayback(TRAZA.events, { clock: createFakeClock() });
     assert.deepEqual(p.order(), ["E000001", "E000002"]);
     assert.deepEqual(p.temporalOrder(), ["E000002", "E000001"]);
   });
 
-  it("un evento tardío no mueve un cursor pausado", () => {
-    const p = createPlayback(TRAZA.events, { clock: relojFalso() });
-    p.pause();
+  it("a 1× avanza cada 2350 ms y a 2× cada 1175 ms", () => {
+    const reloj = createFakeClock();
+    const p = createPlayback(TRES, { clock: reloj });
     p.seek("E000001");
-    p.ingest({
-      events: [
-        ...TRAZA.events,
-        evento("E000003", 3, "2026-09-01T10:00:00+00:00", "2026-09-01T12:00:20+00:00"),
-      ],
-      temporal_order: ["E000003", "E000002", "E000001"],
-    });
-    assert.equal(p.state().selectedEventId, "E000001", "el cursor pausado no se mueve solo");
-    assert.equal(p.state().newEvents, 1);
+    p.play();
+    assert.equal(p.state().mode, "playing");
+    reloj.advance(2349);
+    assert.equal(p.state().selectedEventId, "E000001");
+    assert.equal(p.state().stepElapsedMs, 2349);
+    reloj.advance(1);
+    assert.equal(p.state().selectedEventId, "E000002");
+    assert.equal(p.state().stepElapsedMs, 0, "cada paso empieza de cero");
+
+    const reloj2 = createFakeClock();
+    const q = createPlayback(TRES, { clock: reloj2, speed: 2 });
+    assert.equal(q.state().stepMs, 1175);
+    q.seek("E000001");
+    q.play();
+    reloj2.advance(1174);
+    assert.equal(q.state().selectedEventId, "E000001");
+    reloj2.advance(1);
+    assert.equal(q.state().selectedEventId, "E000002");
+    reloj2.advance(1175);
+    assert.equal(q.state().selectedEventId, "E000003");
   });
 
-  it("cuenta cada evento nuevo una sola vez, incluso tras reconectar", () => {
-    const p = createPlayback(TRAZA.events, { clock: relojFalso() });
+  it("pausar a 900 ms y reanudar 5 s después retoma con el tiempo restante", () => {
+    const reloj = createFakeClock();
+    const p = createPlayback(TRES, { clock: reloj });
+    p.seek("E000001");
+    p.play();
+    reloj.advance(900);
+    p.pause();
+    assert.equal(p.state().mode, "paused");
+    assert.equal(p.state().stepElapsedMs, 900);
+    reloj.advance(5000);
+    assert.equal(p.state().stepElapsedMs, 900, "la pausa congela el progreso");
+    assert.equal(p.state().selectedEventId, "E000001");
+    p.play();
+    reloj.advance(1449);
+    assert.equal(p.state().selectedEventId, "E000001");
+    assert.equal(p.state().stepElapsedMs, 2349);
+    reloj.advance(1);
+    assert.equal(p.state().selectedEventId, "E000002");
+  });
+
+  it("play() en el último evento es no-op", () => {
+    const reloj = createFakeClock();
+    const p = createPlayback(TRES, { clock: reloj });
+    let avisos = 0;
+    p.subscribe(() => { avisos += 1; });
+    p.play();
+    assert.equal(p.state().mode, "paused");
+    assert.equal(reloj.pending(), 0);
+    assert.equal(avisos, 0);
+  });
+
+  it("al llegar al último completa su paso y queda en pausa", () => {
+    const reloj = createFakeClock();
+    const p = createPlayback(TRAZA.events, { clock: reloj });
+    p.seek("E000001");
+    p.play();
+    reloj.advance(2350);
+    assert.equal(p.state().selectedEventId, "E000002");
+    assert.equal(p.state().mode, "playing", "el último hito también recibe su paso");
+    reloj.advance(2350);
+    assert.equal(p.state().mode, "paused");
+    assert.equal(p.state().stepElapsedMs, 2350);
+    assert.equal(reloj.pending(), 0);
+  });
+
+  it("present() cronometra el paso del seleccionado sin avanzar", () => {
+    const reloj = createFakeClock();
+    const p = createPlayback(TRES, { clock: reloj });
+    p.seek("E000002");
+    p.present();
+    assert.equal(p.state().mode, "playing");
+    reloj.advance(1000);
+    assert.equal(p.state().stepElapsedMs, 1000);
+    reloj.advance(5000);
+    assert.equal(p.state().selectedEventId, "E000002", "no avanza al siguiente");
+    assert.equal(p.state().mode, "paused");
+    assert.equal(p.state().stepElapsedMs, 2350);
+  });
+
+  it("cambiar la velocidad conserva la fracción del paso", () => {
+    const reloj = createFakeClock();
+    const p = createPlayback(TRES, { clock: reloj });
+    p.seek("E000001");
+    p.play();
+    reloj.advance(1175);
+    p.setSpeed(2);
+    assert.equal(p.state().stepMs, 1175);
+    assert.equal(p.state().stepElapsedMs, 587.5);
+    reloj.advance(587.5);
+    assert.equal(p.state().selectedEventId, "E000002");
+  });
+
+  it("ingest no mueve un cursor pausado y cuenta cada nuevo una vez", () => {
+    const p = createPlayback(TRAZA.events, { clock: createFakeClock() });
+    p.seek("E000001");
     const conNuevo = {
-      events: [...TRAZA.events, evento("E000003", 3, null, "2026-09-01T12:00:20+00:00")],
-      temporal_order: ["E000001", "E000002", "E000003"],
+      events: [...TRAZA.events, evento("E000003", 3, "2026-09-01T10:00:00+00:00", "2026-09-01T12:00:20+00:00")],
+      temporal_order: ["E000003", "E000002", "E000001"],
     };
     p.ingest(conNuevo);
+    assert.equal(p.state().selectedEventId, "E000001", "el cursor pausado no se mueve solo");
+    assert.equal(p.state().mode, "paused");
     assert.equal(p.state().newEvents, 1);
     p.ingest(conNuevo);
     assert.equal(p.state().newEvents, 1, "un duplicado no vuelve a contar");
+    assert.deepEqual(p.order(), ["E000001", "E000002", "E000003"]);
   });
 
-  it("volver a vivo elige el evento más reciente por secuencia", () => {
-    const p = createPlayback(TRAZA.events, { clock: relojFalso() });
-    p.pause();
-    p.ingest({
-      events: [
-        ...TRAZA.events,
-        evento("E000003", 3, "2026-09-01T10:00:00+00:00", "2026-09-01T12:00:20+00:00"),
-      ],
-      temporal_order: ["E000003", "E000002", "E000001"],
-    });
-    p.resumeLive();
+  it("ingest tampoco mueve el cursor pausado en el último ni notifica sin cambios", () => {
+    const p = createPlayback(TRAZA.events, { clock: createFakeClock() });
+    let avisos = 0;
+    p.subscribe(() => { avisos += 1; });
+    p.ingest(TRAZA);
+    assert.equal(avisos, 0, "una instantánea idéntica no notifica");
+    p.ingest({ events: TRES });
+    assert.equal(p.state().selectedEventId, "E000002");
+    assert.equal(p.state().newEvents, 1);
+    assert.equal(avisos, 1);
+  });
+
+  it("ingest sustituye la lista por la instantánea recibida", () => {
+    const p = createPlayback(TRES, { clock: createFakeClock() });
+    p.seek("E000003");
+    p.ingest({ events: TRAZA.events });
+    assert.deepEqual(p.order(), ["E000001", "E000002"], "no conserva una unión obsoleta");
+    assert.equal(p.state().selectedEventId, "E000002", "un cursor fuera de rango se acota al final");
+  });
+
+  it("last() selecciona el más reciente por secuencia y descarta nuevos", () => {
+    const p = createPlayback(TRAZA.events, { clock: createFakeClock() });
+    p.seek("E000001");
+    p.ingest({ events: [...TRAZA.events, evento("E000003", 3, "2026-09-01T10:00:00+00:00", "2026-09-01T12:00:20+00:00")] });
+    p.last();
     assert.equal(p.state().selectedEventId, "E000003");
     assert.equal(p.state().newEvents, 0);
+    assert.equal(p.state().mode, "paused");
   });
 
   it("acepta sólo las velocidades indicadas", () => {
     assert.deepEqual(VELOCIDADES, [0.5, 1, 2, 4]);
-    const p = createPlayback(TRAZA.events, { clock: relojFalso() });
+    const p = createPlayback(TRAZA.events, { clock: createFakeClock() });
     for (const velocidad of VELOCIDADES) {
       p.setSpeed(velocidad);
       assert.equal(p.state().speed, velocidad);
+      assert.equal(p.state().stepMs, PASO_BASE_MS / velocidad);
     }
     assert.throws(() => p.setSpeed(3), /velocidad/i);
   });
 
-  it("el intervalo de 800 ms es tiempo de visualización, no de ejecución", () => {
-    assert.equal(INTERVALO_BASE_MS, 800);
-    const p = createPlayback(TRAZA.events, { clock: relojFalso(), speed: 2 });
-    assert.equal(p.state().speed, 2);
-  });
-
-  it("reproducir avanza con el reloj inyectado y se puede pausar", () => {
-    const reloj = relojFalso();
-    const p = createPlayback(TRAZA.events, { clock: reloj });
-    p.pause();
+  it("destroy cancela los temporizadores", () => {
+    const reloj = createFakeClock();
+    const p = createPlayback(TRES, { clock: reloj });
     p.seek("E000001");
     p.play();
-    assert.equal(p.state().mode, "playing");
-    reloj.avanzar(800);
-    assert.equal(p.state().selectedEventId, "E000002");
-    p.pause();
+    assert.equal(reloj.pending(), 1);
+    p.destroy();
+    assert.equal(reloj.pending(), 0);
+    reloj.advance(10000);
     assert.equal(p.state().mode, "paused");
   });
 
-  it("destroy cancela el temporizador", () => {
-    const reloj = relojFalso();
-    const p = createPlayback(TRAZA.events, { clock: reloj });
-    p.pause();
-    p.seek("E000001");
-    p.play();
-    assert.equal(reloj.pendientes(), 1);
-    p.destroy();
-    assert.equal(reloj.pendientes(), 0);
+  it("ordena como el modelo de traza aunque falte o no sea numérica la secuencia", () => {
+    // Datos no confiables: sin `sequence` y con `sequence` de texto van al final, en orden de llegada.
+    const eventos = [
+      { event_id: "X", summary: "sin secuencia" },
+      { event_id: "A", sequence: 1 },
+      { event_id: "B", sequence: 2 },
+      { event_id: "Y", sequence: "9" },
+      { event_id: "C", sequence: 3 },
+    ];
+    const modelo = buildTraceModel({ events: eventos });
+    const esperado = modelo.events.map((e) => e.event_id);
+    assert.deepEqual(esperado, ["A", "B", "C", "X", "Y"]);
+    const p = createPlayback(eventos, { clock: createFakeClock() });
+    assert.deepEqual(p.order(), esperado);
+    assert.equal(p.state().selectedEventId, modelo.lastId);
+    const q = createPlayback(modelo.events, { clock: createFakeClock() });
+    assert.deepEqual(q.order(), esperado, "el orden del modelo se conserva tal cual");
+    const invertidos = [...eventos].reverse();
+    q.ingest({ events: invertidos });
+    assert.deepEqual(q.order(), ["A", "B", "C", "Y", "X"], "ingest usa el mismo comparador");
+    assert.deepEqual(q.order(), buildTraceModel({ events: invertidos }).events.map((e) => e.event_id));
   });
 
   it("seek a un identificador desconocido no cambia la selección", () => {
-    const p = createPlayback(TRAZA.events, { clock: relojFalso() });
+    const p = createPlayback(TRAZA.events, { clock: createFakeClock() });
     const antes = p.state().selectedEventId;
     p.seek("E999999");
     assert.equal(p.state().selectedEventId, antes);

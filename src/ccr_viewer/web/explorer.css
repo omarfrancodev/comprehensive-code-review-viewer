@@ -1,0 +1,994 @@
+/*
+ * Explorador de trazabilidad (§6): franja de actores, timeline por pasos de
+ * secuencia, controles, búsqueda, tarjetas e inspector. Solo consume
+ * tokens de tokens.css. Las propiedades dinámicas (`--marcadores`, `--cursor`,
+ * `--etapa-*`) se escriben con `style.setProperty`, nunca con estilos en línea.
+ * El movimiento (cursor, inspector, revelado) se anula por completo con
+ * movimiento reducido del sistema o la preferencia «Reducido».
+ */
+
+.explorador {
+  display: grid;
+  gap: var(--separacion);
+  min-width: 0;
+}
+
+.explorador > * {
+  min-width: 0;
+}
+
+/* Botones inactivos con `aria-disabled`: conservan el foco y no actúan. */
+button[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* --- Cabecera y cadena --------------------------------------------------- */
+
+.explorador-cabecera h2 {
+  margin: 0;
+  font-size: var(--tam-titulo);
+}
+
+.explorador-cadena {
+  margin: var(--espacio-1) 0 0;
+  color: var(--texto-suave);
+  font-size: var(--tam-meta);
+}
+
+.explorador-cadena strong {
+  color: var(--aviso);
+  font-weight: 600;
+}
+
+.explorador-cadena[data-chain-status="verified"] strong {
+  color: var(--ok);
+}
+
+.explorador-diagnosticos {
+  margin-top: var(--espacio-2);
+  padding: var(--espacio-2) var(--espacio-3);
+  border: 1px solid var(--borde);
+  border-left: 4px solid var(--aviso);
+  border-radius: var(--radio-1);
+  background: var(--superficie-hundida);
+  font-size: var(--tam-meta);
+}
+
+.explorador-diagnosticos-titulo {
+  margin: 0 0 var(--espacio-1);
+  font-weight: 600;
+}
+
+/* --- Franja de actores --------------------------------------------------- */
+
+.explorador-actores {
+  display: grid;
+  gap: var(--espacio-2);
+  padding: var(--espacio-3);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-2);
+  background: linear-gradient(140deg, var(--acento-suave), var(--superficie) 65%);
+}
+
+.actores-lista {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--espacio-2);
+}
+
+.actor {
+  display: grid;
+  gap: var(--espacio-1);
+  align-content: center;
+  min-width: 0;
+  padding: var(--espacio-2);
+  border-color: var(--borde);
+  border-radius: var(--radio-2);
+  background: var(--superficie);
+  text-align: center;
+}
+
+.actor[aria-current="true"] {
+  border-color: var(--acento);
+  background: var(--acento-suave);
+  box-shadow: inset 0 0 0 1px var(--acento);
+}
+
+.actor-nombre {
+  font-size: var(--tam-meta);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.actor-cuenta {
+  color: var(--texto-suave);
+  font-size: var(--tam-pequeno);
+}
+
+.actores-pie {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espacio-2);
+  font-size: var(--tam-meta);
+}
+
+.actores-rango {
+  margin-right: auto;
+  color: var(--texto-suave);
+}
+
+.actores-aviso {
+  margin: 0;
+  color: var(--aviso);
+  font-size: var(--tam-meta);
+}
+
+.actores-aviso:empty {
+  display: none;
+}
+
+.actores-dialogo {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: var(--espacio-2);
+  max-height: 50vh;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.actores-dialogo .actor {
+  width: 100%;
+}
+
+.actores-dialogo-nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--espacio-2);
+}
+
+/* --- Timeline: distancias por pasos, nunca por duración ------------------ */
+
+.explorador-timeline {
+  display: grid;
+  gap: var(--espacio-2);
+  padding: var(--espacio-3);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-2);
+  background: var(--superficie);
+}
+
+.timeline-cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espacio-2);
+  color: var(--texto-suave);
+  font-size: var(--tam-meta);
+}
+
+.timeline-titulo {
+  font-size: var(--tam-pequeno);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.timeline-rango {
+  margin-right: auto;
+}
+
+.timeline-pista {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.timeline-linea {
+  position: relative;
+  min-width: calc(var(--marcadores, 1) * 28px);
+  padding: var(--espacio-2) 0;
+}
+
+.timeline-linea::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--borde);
+}
+
+.timeline-marcadores {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--marcadores, 1), minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.timeline-punto {
+  display: grid;
+  place-items: center;
+}
+
+.marcador {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--superficie);
+  color: var(--texto-suave);
+}
+
+.marcador::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.marcador[data-shape="diamond"]::before {
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+
+.marcador[data-shape="hollow"]::before {
+  border: 2px solid currentColor;
+  background: transparent;
+}
+
+.marcador[data-basis="observed_occurrence"] {
+  color: var(--ok);
+}
+
+.marcador[data-basis="recording_fallback"] {
+  color: var(--aviso);
+}
+
+.marcador:hover:not([aria-current="true"]) {
+  background: var(--superficie-hundida);
+}
+
+.marcador[aria-current="true"] {
+  background: var(--acento-suave);
+  box-shadow: 0 0 0 2px var(--acento);
+  color: var(--acento);
+}
+
+.timeline-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--cursor, 50%);
+  width: 2px;
+  margin-left: -1px;
+  background: var(--acento);
+  opacity: 0.6;
+  pointer-events: none;
+  transition: left var(--duracion-cursor) ease-out;
+}
+
+.timeline-leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--espacio-1) var(--espacio-3);
+  margin: 0;
+  color: var(--texto-suave);
+  font-size: var(--tam-pequeno);
+}
+
+.leyenda-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--espacio-1);
+}
+
+.leyenda-forma {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.leyenda-forma[data-shape="circle"] {
+  color: var(--ok);
+}
+
+.leyenda-forma[data-shape="diamond"] {
+  border-radius: 1px;
+  color: var(--aviso);
+  transform: rotate(45deg);
+}
+
+.leyenda-forma[data-shape="hollow"] {
+  border: 2px solid currentColor;
+  background: transparent;
+}
+
+/* --- Controles del recorrido ---------------------------------------------- */
+
+.explorador-controles {
+  display: grid;
+  gap: var(--espacio-2);
+  padding: var(--espacio-3);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-2);
+  background: var(--superficie-hundida);
+}
+
+.controles-botones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espacio-2);
+}
+
+.controles-botones [aria-pressed="true"] {
+  border-color: var(--acento);
+  background: var(--acento-suave);
+  color: var(--acento);
+}
+
+.controles-velocidad {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--espacio-1);
+  color: var(--texto-suave);
+  font-size: var(--tam-meta);
+}
+
+.controles-posicion {
+  width: 100%;
+}
+
+.controles-estado {
+  margin: 0;
+  color: var(--texto-suave);
+  font-size: var(--tam-meta);
+}
+
+/* --- Búsqueda --------------------------------------------------------------- */
+
+.explorador-busqueda {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espacio-2);
+}
+
+.explorador-busqueda input[type="search"] {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.busqueda-estado {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--texto-suave);
+  font-size: var(--tam-meta);
+}
+
+/* --- Tarjetas en secuencia ------------------------------------------------ */
+
+.explorador-tarjetas {
+  display: grid;
+  gap: var(--espacio-2);
+}
+
+.tarjetas-cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espacio-2);
+}
+
+.tarjetas-rango {
+  margin: 0 auto 0 0;
+  color: var(--texto-suave);
+  font-size: var(--tam-meta);
+}
+
+.tarjetas-panel {
+  max-height: min(70vh, 40rem);
+  padding: var(--espacio-2);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-2);
+  background: var(--fondo);
+  scrollbar-width: thin;
+}
+
+.tarjetas {
+  display: grid;
+  gap: var(--espacio-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tarjeta {
+  position: relative;
+  display: grid;
+  gap: var(--espacio-2);
+  min-width: 0;
+  padding: var(--espacio-3);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-2);
+  background: var(--superficie);
+}
+
+.tarjeta[data-state="received"] {
+  border-style: dashed;
+}
+
+.tarjeta[data-state="revealing"] {
+  border-color: var(--acento);
+}
+
+.tarjeta[aria-current="true"] {
+  border-color: var(--acento);
+  background: var(--acento-suave);
+  box-shadow: inset 4px 0 0 var(--acento);
+}
+
+.tarjeta-boton {
+  display: grid;
+  gap: var(--espacio-1);
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.tarjeta-boton:hover:not(:disabled) {
+  background: transparent;
+}
+
+.tarjeta-boton:hover .tarjeta-resumen {
+  text-decoration: underline;
+}
+
+.tarjeta-meta {
+  color: var(--texto-suave);
+  font-size: var(--tam-meta);
+  overflow-wrap: anywhere;
+}
+
+.tarjeta-actor {
+  color: var(--texto);
+  font-weight: 600;
+}
+
+.tarjeta-id,
+.tarjeta-tipo {
+  font-family: var(--fuente-mono);
+}
+
+.tarjeta-resumen {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.tarjeta-pie {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espacio-1) var(--espacio-2);
+  color: var(--texto-suave);
+  font-size: var(--tam-meta);
+}
+
+.tarjeta-estado {
+  padding: 0 var(--espacio-2);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-1);
+  color: var(--texto);
+}
+
+.tarjeta-recibido {
+  color: var(--aviso);
+  font-size: var(--tam-pequeno);
+}
+
+.tarjeta-botones {
+  display: inline-flex;
+  gap: var(--espacio-2);
+  margin-left: auto;
+}
+
+/* --- Revelado progresivo (§7) ----------------------------------------------
+ * Una sola tarjeta en `revealing`. Las etapas (0–1) se solapan: estructura
+ * 0–22 %, cabecera 18–42 %, contenido 36–72 % y acciones 68–100 %. Solo
+ * máscara, opacidad y transformación: el espacio de la tarjeta es el final
+ * desde el primer fotograma y el texto completo siempre está en el DOM.
+ */
+
+.tarjeta-brillo {
+  display: none;
+}
+
+.tarjeta[data-state="revealing"] {
+  overflow: hidden;
+  opacity: calc(0.35 + 0.65 * var(--etapa-estructura, 1));
+  transform: translateY(calc((1 - var(--etapa-estructura, 1)) * 6px));
+  animation: pulso-llegada var(--duracion-pulso) ease-out 1;
+}
+
+.tarjeta[data-state="revealing"] .tarjeta-brillo {
+  position: absolute;
+  inset: 0;
+  display: block;
+  background: linear-gradient(100deg, transparent 25%, var(--acento-suave) 50%, transparent 75%);
+  background-size: 200% 100%;
+  opacity: calc(1 - var(--etapa-cabecera, 1));
+  pointer-events: none;
+  animation: brillo-revelado var(--duracion-brillo) linear infinite;
+}
+
+/* La pausa congela también el brillo. */
+.explorador[data-playback="paused"] .tarjeta-brillo {
+  animation-play-state: paused;
+}
+
+.tarjeta[data-state="revealing"] [data-part="header"] {
+  opacity: var(--etapa-cabecera, 1);
+  transform: translateY(calc((1 - var(--etapa-cabecera, 1)) * 4px));
+}
+
+.tarjeta[data-state="revealing"] [data-part="content"] {
+  --corte-contenido: calc(var(--etapa-contenido, 1) * 130% - 30%);
+  opacity: calc(0.2 + 0.8 * var(--etapa-contenido, 1));
+  transform: translateY(calc((1 - var(--etapa-contenido, 1)) * 4px));
+  -webkit-mask-image: linear-gradient(to bottom, #000 var(--corte-contenido), transparent calc(var(--corte-contenido) + 30%));
+  mask-image: linear-gradient(to bottom, #000 var(--corte-contenido), transparent calc(var(--corte-contenido) + 30%));
+}
+
+.tarjeta[data-state="revealing"] [data-part="actions"] {
+  opacity: var(--etapa-acciones, 1);
+  transform: translateY(calc((1 - var(--etapa-acciones, 1)) * 4px));
+}
+
+@keyframes brillo-revelado {
+  from {
+    background-position: 150% 0;
+  }
+
+  to {
+    background-position: -50% 0;
+  }
+}
+
+/* Pulso de llegada único (≤ 560 ms). */
+@keyframes pulso-llegada {
+  from {
+    box-shadow: 0 0 0 0 var(--acento);
+  }
+
+  to {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+
+/* --- Inspector (§6.3, §9) ------------------------------------------------- */
+
+.inspector,
+.inspector-cuerpo {
+  display: grid;
+  gap: var(--espacio-3);
+  min-width: 0;
+}
+
+/*
+ * Cada hito nuevo entra en un `.inspector-cuerpo` nuevo: este es el nodo que
+ * transiciona (160–180 ms) desde `@starting-style`; nunca se «escribe».
+ */
+.inspector-cuerpo {
+  transition: opacity var(--duracion-inspector) ease-out, transform var(--duracion-inspector) ease-out;
+}
+
+@starting-style {
+  .inspector-cuerpo {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}
+
+.inspector-rotulo {
+  margin: 0;
+  color: var(--texto-suave);
+  font-size: var(--tam-pequeno);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.inspector-id {
+  margin: 0;
+  font-family: var(--fuente-mono);
+  font-size: var(--tam-titulo);
+  overflow-wrap: anywhere;
+}
+
+.inspector-resumen {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.inspector-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--espacio-2);
+}
+
+.inspector-accion {
+  font-size: var(--tam-meta);
+}
+
+.inspector-copia-estado {
+  margin: var(--espacio-1) 0 0;
+  color: var(--texto-suave);
+  font-size: var(--tam-meta);
+}
+
+.inspector-copia-estado:empty {
+  margin: 0;
+}
+
+.inspector-campos .campo {
+  grid-template-columns: minmax(6rem, 8rem) minmax(0, 1fr);
+}
+
+.inspector-campos dd,
+.inspector code {
+  overflow-wrap: anywhere;
+}
+
+.inspector-seccion h3 {
+  margin: 0 0 var(--espacio-1);
+  font-size: var(--tam-meta);
+}
+
+.inspector-detalle > summary {
+  min-height: 24px;
+  cursor: pointer;
+  font-size: var(--tam-meta);
+  font-weight: 600;
+}
+
+.inspector-detalle[open] > summary {
+  margin-bottom: var(--espacio-2);
+}
+
+.inspector-subtitulo,
+.relaciones-origen {
+  margin: var(--espacio-2) 0 var(--espacio-1);
+  font-size: var(--tam-meta);
+  font-weight: 600;
+}
+
+.inspector-relaciones-lista,
+.inspector-evidencia-lista {
+  display: grid;
+  gap: var(--espacio-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inspector-relacion,
+.inspector-evidencia {
+  display: grid;
+  gap: var(--espacio-1);
+  padding: var(--espacio-2);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-1);
+  overflow-wrap: anywhere;
+}
+
+/* Lo que no navega se distingue por texto y borde, no solo por color. */
+.inspector-relacion:not([data-relation-status="resolved"]),
+.inspector-evidencia[data-evidence-code] {
+  border-style: dashed;
+}
+
+.relacion-linea,
+.relacion-estado,
+.relacion-motivo,
+.evidencia-motivo {
+  margin: 0;
+}
+
+.relacion-tipo {
+  font-weight: 600;
+}
+
+.relacion-estado,
+.relacion-motivo,
+.evidencia-motivo {
+  color: var(--texto-suave);
+  font-size: var(--tam-meta);
+}
+
+.relacion-ciclo {
+  color: var(--aviso);
+  font-weight: 600;
+}
+
+.inspector-relacion .inspector-accion,
+.inspector-evidencia .inspector-accion {
+  justify-self: start;
+}
+
+.inspector-orden-temporal {
+  padding-top: var(--espacio-2);
+  border-top: 1px solid var(--borde);
+}
+
+.inspector-orden-ids {
+  margin: 0;
+  font-size: var(--tam-meta);
+}
+
+/* Acciones de relaciones/evidencia de la tarjeta (inertes durante el revelado). */
+.tarjeta-accion {
+  font-size: var(--tam-meta);
+}
+
+/* Retorno a la revisión anterior tras abrir otra corrida desde una relación. */
+.retorno-contexto,
+.aviso-fuente {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espacio-2) var(--espacio-3);
+  margin-bottom: var(--espacio-2);
+  padding: var(--espacio-2) var(--espacio-3);
+  border: 1px solid var(--borde);
+  border-left: 4px solid var(--acento);
+  border-radius: var(--radio-1);
+  background: var(--superficie);
+}
+
+.retorno-contexto[hidden],
+.aviso-fuente[hidden] {
+  display: none;
+}
+
+.retorno-contexto .nota {
+  margin: 0;
+}
+
+/* --- En Vivo e indicador de fuente (§8) -------------------------------------
+ * El indicador de fuente (`source-loader`) representa el cierre `processing`:
+ * persiste tras el revelado y es distinto del brillo de presentación. Sin
+ * conexión, en espera de recarga o con movimiento reducido es un icono
+ * estático; en la pausa de En Vivo su giro se congela.
+ */
+
+/* Banda de la fuente: misma forma que el retorno de contexto. */
+.aviso-fuente {
+  border-left-color: var(--aviso);
+}
+
+.aviso-fuente[data-code="session"] {
+  border-left-color: var(--error);
+}
+
+.aviso-fuente-texto {
+  margin: 0;
+  font-weight: 600;
+}
+
+.explorador-vivo {
+  display: grid;
+  gap: var(--espacio-2);
+  min-width: 0;
+}
+
+.vivo-fila {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espacio-2);
+}
+
+.vivo-boton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--espacio-2);
+}
+
+.vivo-punto {
+  width: 8px;
+  height: 8px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+
+.vivo-boton[aria-pressed="true"] {
+  border-color: var(--acento);
+  background: var(--acento-suave);
+  color: var(--acento);
+}
+
+.vivo-boton[aria-pressed="true"] .vivo-punto {
+  background: currentColor;
+}
+
+.vivo-contador {
+  color: var(--aviso);
+  font-size: var(--tam-meta);
+  font-weight: 600;
+}
+
+.vivo-motivo,
+.vivo-fuente,
+.vivo-aviso {
+  margin: 0;
+  font-size: var(--tam-meta);
+}
+
+.vivo-fuente {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espacio-1) var(--espacio-2);
+  overflow-wrap: anywhere;
+}
+
+.vivo-contador[hidden],
+.vivo-motivo[hidden],
+.vivo-fuente[hidden],
+.vivo-aviso[hidden] {
+  display: none;
+}
+
+.tarjeta[data-active-source="true"] {
+  border-color: var(--acento);
+  border-left-width: 4px;
+}
+
+.fuente-carga {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--espacio-2);
+  color: var(--acento);
+  font-size: var(--tam-meta);
+}
+
+.fuente-icono {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--acento-suave);
+  border-top-color: var(--acento);
+  border-radius: 50%;
+  animation: giro-fuente 900ms linear infinite;
+}
+
+.timeline-punto {
+  position: relative;
+}
+
+.timeline-punto .fuente-carga {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.timeline-punto .fuente-icono {
+  width: 22px;
+  height: 22px;
+}
+
+.fuente-carga[data-loader="static"] {
+  color: var(--texto-suave);
+}
+
+/* Estático: sin giro ni sugerencia de recepción. */
+.fuente-carga[data-loader="static"] .fuente-icono {
+  border-color: currentColor;
+  border-style: dashed;
+  animation: none;
+}
+
+.explorador[data-live="paused"] .fuente-icono {
+  animation-play-state: paused;
+}
+
+@keyframes giro-fuente {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- Táctil y una columna ------------------------------------------------- */
+
+@media (pointer: coarse) {
+  .marcador {
+    width: 44px;
+    height: 44px;
+  }
+
+  .timeline-linea {
+    min-width: calc(var(--marcadores, 1) * 48px);
+  }
+}
+
+@media (max-width: 799.98px) {
+  .actores-lista {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .explorador-actores,
+  .explorador-timeline,
+  .explorador-controles {
+    padding: var(--espacio-2);
+  }
+}
+
+/* --- Movimiento reducido (sistema o preferencia «Reducido») ---------------
+ * Elementos completos al instante, sin brillo, pulsos ni transiciones. Los
+ * controles y el avance discreto siguen disponibles.
+ */
+
+:root[data-motion="reduce"] .explorador *,
+:root[data-motion="reduce"] .explorador *::before,
+:root[data-motion="reduce"] .explorador *::after,
+:root[data-motion="reduce"] .inspector,
+:root[data-motion="reduce"] .inspector * {
+  animation: none !important;
+  transition: none !important;
+}
+
+:root[data-motion="reduce"] .tarjeta[data-state="revealing"],
+:root[data-motion="reduce"] .tarjeta[data-state="revealing"] [data-part] {
+  opacity: 1;
+  transform: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+:root[data-motion="reduce"] .tarjeta[data-state="revealing"] .tarjeta-brillo {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .explorador *,
+  .explorador *::before,
+  .explorador *::after,
+  .inspector,
+  .inspector * {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .tarjeta[data-state="revealing"],
+  .tarjeta[data-state="revealing"] [data-part] {
+    opacity: 1;
+    transform: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  .tarjeta[data-state="revealing"] .tarjeta-brillo {
+    display: none;
+  }
+}
