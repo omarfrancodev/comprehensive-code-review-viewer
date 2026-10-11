@@ -63,6 +63,7 @@ const tarjetas = (page) => page.locator('[data-part="cards"] li[data-event-id]')
 const tarjeta = (page, id) => page.locator(`[data-part="cards"] li[data-event-id="${id}"]`);
 const actual = (page) => page.locator('[data-part="cards"] li[aria-current="true"]');
 const marcador = (page, id) => page.locator(`[data-part="timeline"] button[data-event-id="${id}"]`);
+const marcadores = (page) => page.locator('[data-part="timeline"] button[data-event-id]');
 const fuentesActivas = (page) => page.locator('[data-active-source="true"]');
 const cargaDe = (page, id) => tarjeta(page, id).locator('[data-part="source-loader"]');
 const enVivo = (page) => page.getByRole("button", { name: "En Vivo", exact: true });
@@ -213,6 +214,7 @@ test.describe("lectura en actualización", () => {
     await expect(enVivo(page)).toBeDisabled();
     await expect(motivo(page)).toHaveText("Archivo en actualización");
     // Se conserva el modelo anterior: E000004 no aparece.
+    await expect(marcadores(page)).toHaveCount(3);
     await expect(tarjetas(page)).toHaveCount(3);
     // Tras los reintentos acotados se espera otro aviso o «Reintentar».
     const pedidas = fuente.vistas;
@@ -220,7 +222,10 @@ test.describe("lectura en actualización", () => {
     expect(fuente.vistas).toBe(pedidas);
     fuente.vista = vistaCon("processing");
     await banda(page).getByRole("button", { name: "Reintentar" }).click();
-    await expect(tarjetas(page)).toHaveCount(4);
+    // El modelo nuevo llega; E000004 queda recibido sin presentar hasta «Mostrar nuevos».
+    await expect(marcadores(page)).toHaveCount(4);
+    await expect(contador(page)).toHaveText("1 nuevo sin presentar");
+    await expect(tarjetas(page)).toHaveCount(3);
     await expect(banda(page)).toBeHidden();
     await expect(enVivo(page)).toBeEnabled();
   });
@@ -260,10 +265,17 @@ test.describe("LV-02 último hito activo", () => {
     const fuente = await abrirVivo(page, { evento: "E000002" });
     fuente.traza = conHitos(4);
     await avisar(page);
-    await expect(tarjeta(page, "E000004")).toHaveAttribute("data-active-source", "true");
-    await expect(tarjeta(page, "E000004")).toHaveAttribute("data-state", "received");
+    await expect(marcador(page, "E000004")).toHaveAttribute("data-active-source", "true");
+    await expect(page.locator('[data-part="timeline"] [data-active-source="true"]')).toHaveCount(1);
     await expect(actual(page)).toHaveAttribute("data-event-id", "E000002");
-    await expect(page.locator('[data-part="cards"] [data-active-source="true"]')).toHaveCount(1);
+    // E000004 aún no se presenta: no está en la lista y el acceso explícito lleva a él.
+    await expect(tarjeta(page, "E000004")).toHaveCount(0);
+    await expect(fuenteViva(page)).toContainText("Último activo: E000004");
+    await expect(page.locator('[data-part="cards"] [data-active-source="true"]')).toHaveCount(0);
+    await mostrarNuevos(page).click();
+    await expect(tarjeta(page, "E000004")).toHaveAttribute("data-active-source", "true");
+    await expect(tarjeta(page, "E000004")).toHaveAttribute("data-state", "complete");
+    await expect(actual(page)).toHaveAttribute("data-event-id", "E000002");
   });
 
   test("un hito completed con carga no se rotula running", async ({ page }) => {
@@ -371,17 +383,24 @@ test.describe("LV-04 pausa y cola de lectura", () => {
     fuente.traza = llegadas;
     await avisarConReloj(page);
     await expect(contador(page)).toHaveText("2 nuevos sin presentar");
-    // El modelo y los datos accesibles se actualizan; las tarjetas quedan recibidas.
-    await expect(tarjetas(page)).toHaveCount(22);
-    await expect(tarjeta(page, "E000021")).toHaveAttribute("data-state", "received");
-    await expect(tarjeta(page, "E000022")).toHaveAttribute("data-state", "received");
+    // El modelo y los datos accesibles se actualizan (timeline); la lista no incorpora
+    // los pendientes hasta «Mostrar nuevos».
+    await expect(marcadores(page)).toHaveCount(22);
+    await expect(tarjetas(page)).toHaveCount(20);
+    await expect(tarjeta(page, "E000021")).toHaveCount(0);
+    await expect(tarjeta(page, "E000022")).toHaveCount(0);
     await expect(actual(page)).toHaveAttribute("data-event-id", "E000020");
     await expect(actual(page)).toHaveAttribute("data-state", etapa);
     expect(await page.evaluate(() => document.activeElement?.dataset.testigo ?? null)).toBe("1");
     expect(await panel.evaluate((nodo) => nodo.scrollTop)).toBe(scroll);
 
-    // Buscar no borra el contador.
+    // Buscar no borra el contador y alcanza los recibidos sin presentar.
     const buscar = page.getByRole("searchbox", { name: "Buscar hitos" });
+    await buscar.fill("Hito vivo");
+    await expect(tarjetas(page)).toHaveCount(2);
+    await expect(tarjeta(page, "E000021")).toHaveAttribute("data-state", "received");
+    await expect(tarjeta(page, "E000021")).toContainText("Recibido · sin presentar");
+    await expect(contador(page)).toHaveText("2 nuevos sin presentar");
     await buscar.fill("Evento sintético 1");
     await expect(contador(page)).toHaveText("2 nuevos sin presentar");
     await buscar.fill("");
@@ -426,7 +445,8 @@ test.describe("LV-04 pausa y cola de lectura", () => {
     fuente.traza = conHitos(4);
     await avisarConReloj(page);
     await expect(contador(page)).toHaveText("1 nuevo sin presentar");
-    await expect(tarjeta(page, "E000004")).toHaveAttribute("data-state", "received");
+    await expect(marcador(page, "E000004")).toHaveCount(1);
+    await expect(tarjeta(page, "E000004")).toHaveCount(0);
     await expect(actual(page)).toHaveAttribute("data-event-id", "E000003");
     await expect(inspector(page)).toHaveAttribute("data-event-id", "E000003");
     await expect(json).toHaveAttribute("open", "");
@@ -517,7 +537,12 @@ test.describe("LV-04 pausa y cola de lectura", () => {
     await page.clock.runFor(6000);
     await expect(actual(page)).toHaveAttribute("data-event-id", "E000004");
     await expect(boton(page, "Reproducir")).toBeVisible();
-    await expect(tarjeta(page, "E000005")).toHaveAttribute("data-state", "received");
+    // Los pendientes siguen recibidos (timeline) y fuera de la lista hasta «Mostrar nuevos».
+    await expect(marcador(page, "E000005")).toHaveCount(1);
+    await expect(tarjeta(page, "E000005")).toHaveCount(0);
+    await mostrarNuevos(page).click();
+    await expect(tarjeta(page, "E000005")).toHaveAttribute("data-state", "complete");
+    await expect(actual(page)).toHaveAttribute("data-event-id", "E000004");
   });
 
   test("desconexión: icono estático «Último estado conocido» y «Datos no actualizados»; al reconectar espera la recarga", async ({ page }) => {

@@ -20,6 +20,7 @@ const ESPERA_SONDEO = { timeout: 20_000 };
 
 const tarjetas = (page) => page.locator('[data-part="cards"] li[data-event-id]');
 const tarjeta = (page, id) => page.locator(`[data-part="cards"] li[data-event-id="${id}"]`);
+const marcadores = (page) => page.locator('[data-part="timeline"] button[data-event-id]');
 const actual = (page) => page.locator('[data-part="cards"] li[aria-current="true"]');
 const enVivo = (page) => page.getByRole("button", { name: "En Vivo", exact: true });
 const motivo = (page) => page.locator('[data-part="live-reason"]');
@@ -216,10 +217,12 @@ test("LV-03: cerrar y reabrir el canal SSE recarga una vez y no repite eventos n
   // Reapertura: se recarga antes de contar nuevos; E000003 cuenta una vez.
   await page.evaluate(() => window.__canal.reabrir());
   await expect(page.locator("#avisos")).toHaveAttribute("data-estado", "connected");
-  await expect(tarjetas(page)).toHaveCount(3, ESPERA_SONDEO);
+  // E000003 llega al modelo (timeline) y queda pendiente, fuera de la lista.
+  await expect(marcadores(page)).toHaveCount(3, ESPERA_SONDEO);
   await expect(contador(page)).toHaveText("1 nuevo sin presentar");
+  await expect(tarjetas(page)).toHaveCount(2);
   await expect(page.locator('[data-part="source-notice"]')).toBeHidden();
-  await expect(tarjeta(page, "E000003").locator('[data-part="source-loader"]')).toHaveAttribute("data-loader", "active");
+  await expect(page.locator('[data-part="timeline"] li:has(button[data-event-id="E000003"]) [data-part="source-loader"]')).toHaveAttribute("data-loader", "active");
 
   // Segundo corte sin cambios en la fuente: nada se repite.
   await page.evaluate(() => window.__canal.cortar());
@@ -227,7 +230,8 @@ test("LV-03: cerrar y reabrir el canal SSE recarga una vez y no repite eventos n
   await page.evaluate(() => window.__canal.reabrir());
   await expect(page.locator("#avisos")).toHaveAttribute("data-estado", "connected");
   await page.waitForTimeout(5000);
-  expect(await idsDeTarjetas(page)).toEqual(["E000001", "E000002", "E000003"]);
+  expect(await idsDeTarjetas(page)).toEqual(["E000001", "E000002"]);
+  await expect(marcadores(page)).toHaveCount(3);
   await expect(contador(page)).toHaveText("1 nuevo sin presentar");
   expect(await page.evaluate(() => window.__canal.aperturas)).toBe(3);
 

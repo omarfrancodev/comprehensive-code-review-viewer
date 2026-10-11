@@ -252,7 +252,11 @@ dirección indique otro.
   recorrido» o «Reanudar En Vivo».
 - **Tarjetas.** Una lista lineal de hasta 50 tarjetas por página, en orden de
   secuencia, con metadata breve, resumen, estado original y acciones de
-  relaciones y evidencia (sólo cuando el hito las declara). Seleccionar una
+  relaciones y evidencia (sólo cuando el hito las declara). Sin búsqueda, la
+  lista contiene sólo los hitos ya presentados: tras «Reiniciar», el primero, y
+  cada paso del recorrido incorpora el siguiente. Los recibidos aún sin presentar
+  siguen en la línea de tiempo y la búsqueda los muestra como «Recibido · sin
+  presentar»; seleccionarlos los incorpora. Seleccionar una
   tarjeta, un marcador o un actor converge en el mismo ID y en el mismo
   inspector, sin mover el foco a él. «Seguir recorrido» desplaza sólo el panel de tarjetas y se suspende al
   desplazar, al seleccionar manualmente o al interactuar con el inspector (foco,
@@ -300,7 +304,8 @@ tarjetas ni actores.
   nuevo se añade al final y se presenta con el revelado; en una ráfaga sólo se
   anima el más reciente y los anteriores aparecen completos.
 - Al **pausar**, la recepción continúa: los IDs nuevos se acumulan en «N nuevos
-  sin presentar». Interactuar con el inspector (por ejemplo, abrir el JSON
+  sin presentar» (ya en la línea de tiempo y en la búsqueda, todavía no en la
+  lista de tarjetas). Interactuar con el inspector (por ejemplo, abrir el JSON
   original o enfocar un botón de copia), seleccionar un hito a mano, escribir en
   la búsqueda o desactivar «Seguir recorrido» tiene el mismo efecto: el hito, el foco y el desplazamiento
   se conservan. «Mostrar nuevos» los incorpora sin desplazar ni reanudar, y

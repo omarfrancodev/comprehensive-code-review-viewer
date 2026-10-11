@@ -74,6 +74,8 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
   let inicioVentana = 0;
   let inicioPagina = 0;
   let seleccionPintada;
+  // Prefijo presentado con el que se pintó la lista sin búsqueda.
+  let prefijoPintado = null;
   let seguir = true;
   let desplazarA = null;
   let scrollEsperado = 0;
@@ -182,12 +184,22 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
   }
 
   const claveActorDe = (id) => (typeof id === "string" && modelo.byId.has(id) ? actorKey(modelo.byId.get(id).actor) : null);
-  const totalLista = () => (resultados ? resultados.length : modelo.events.length);
+  /**
+   * Hitos presentados (§7): sin búsqueda, la lista de tarjetas es el prefijo
+   * que el recorrido ya incorporó (`presentedCount`). Tras «Reiniciar» solo el
+   * primero; los recibidos sin presentar (recorrido pendiente o llegadas en
+   * pausa) quedan en el timeline y alcanzables por búsqueda o selección.
+   */
+  const prefijoDe = (actual = estado()) => {
+    const presentados = Number.isInteger(actual.presentedCount) ? actual.presentedCount : modelo.events.length;
+    return Math.min(Math.max(0, presentados), modelo.events.length);
+  };
+  const totalLista = () => (resultados ? resultados.length : prefijoDe());
   const seguirActivo = (actual) => (actual.mode === "live" ? actual.following : seguir);
 
   function posicionEnLista(id) {
     if (resultados) return posiciones.get(id) ?? -1;
-    return modelo.index.has(id) ? modelo.index.get(id) : -1;
+    return modelo.index.has(id) && modelo.index.get(id) < prefijoDe() ? modelo.index.get(id) : -1;
   }
 
   /** La ventana del timeline y la página de tarjetas pasan a la del hito. */
@@ -244,12 +256,15 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
     inicioVentana = acotar(inicioVentana, total);
     const finVentana = Math.min(inicioVentana + WINDOW_SIZE, total);
     timeline.render(modelo, { start: inicioVentana, end: finVentana, total }, actual.selectedId, cambiados);
-    const totalPagina = totalLista();
+    const totalPagina = resultados ? resultados.length : prefijoDe(actual);
+    prefijoPintado = resultados ? null : totalPagina;
     inicioPagina = acotar(inicioPagina, totalPagina);
     const finPagina = Math.min(inicioPagina + WINDOW_SIZE, totalPagina);
     const ids = [];
     for (let i = inicioPagina; i < finPagina; i += 1) ids.push(resultados ? resultados[i] : modelo.events[i].event_id);
-    const mensaje = resultados ? `Ningún hito coincide con «${consulta.trim()}». La selección se conserva.` : "";
+    const mensaje = resultados
+      ? `Ningún hito coincide con «${consulta.trim()}». La selección se conserva.`
+      : total > 0 ? "Los hitos recibidos aún no se han presentado." : "";
     tarjetas.render(modelo, ids, { start: inicioPagina, end: finPagina, total: totalPagina, busqueda: Boolean(resultados) }, etiquetas, cambiados, mensaje);
     tarjetas.sincronizar(actual, modelo);
     scrollEsperado = tarjetas.panel.scrollTop;
@@ -334,7 +349,10 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
       if (conocida && (explicitaActual || seguirActivo(actual))) mostrarTarjeta(id);
       conservarFoco(region, id);
     } else {
-      tarjetas.sincronizar(actual, modelo);
+      // El recorrido incorporó hitos («Mostrar nuevos», «Reanudar En Vivo») sin
+      // cambiar la selección: la lista sin búsqueda crece hasta el prefijo nuevo.
+      if (!resultados && prefijoDe(actual) !== prefijoPintado) pintarListas();
+      else tarjetas.sincronizar(actual, modelo);
       timeline.seleccionar(id);
     }
     controles.sincronizar(actual, modelo, seguirActivo(actual));

@@ -14,10 +14,12 @@ test("SSE mantiene el cursor pausado y publica el resultado sin alterar el archi
     await expect(page.getByRole("button", { name: "Reproducir", exact: true })).toBeVisible();
     const selected = await seleccionada.getAttribute("data-event-id");
     fixtureOperation(server.run, "prepare_to_discovery");
-    await expect(tarjetas).toHaveCount(2, { timeout: 15000 });
+    // La llegada entra al modelo (timeline) pero no se presenta sola: queda en
+    // la cola de lectura y fuera de la lista de tarjetas hasta «Mostrar nuevos».
+    await expect(page.locator('[data-part="timeline"] button[data-event-id]')).toHaveCount(2, { timeout: 15000 });
     await expect(seleccionada).toHaveAttribute("data-event-id", selected);
-    // La llegada no se presenta sola: queda en la cola de lectura.
     await expect(page.locator('[data-part="pending-count"]')).toHaveText("1 nuevo sin presentar");
+    await expect(tarjetas).toHaveCount(1);
     await page.getByRole("tab", { name: "Hallazgos" }).click();
     const inventory = fixtureOperation(server.run, "retained_then_closed");
     await expect(page.locator("#revision")).toContainText("F001", { timeout: 15000 });

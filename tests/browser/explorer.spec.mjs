@@ -320,7 +320,8 @@ test.describe("explorador de trazabilidad", () => {
     await page.getByRole("button", { name: "Reiniciar" }).click();
     await esperarSeleccion(page, "E000001");
     await expect(tarjetas(page).nth(0)).toHaveAttribute("data-state", "revealing");
-    await expect(tarjetas(page).nth(1)).toHaveAttribute("data-state", "received");
+    // Los siguientes aún no se presentan: la lista solo tiene el primero.
+    await expect(tarjetas(page)).toHaveCount(1);
     await page.getByRole("button", { name: "Mostrar tarjeta completa" }).click();
     await expect(tarjetas(page).nth(0)).toHaveAttribute("data-state", "complete");
     await expect(page.getByRole("button", { name: "Reproducir" })).toBeVisible();

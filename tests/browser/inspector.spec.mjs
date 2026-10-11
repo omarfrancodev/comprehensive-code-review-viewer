@@ -544,7 +544,10 @@ test.describe("recarga de la fuente (§11)", () => {
     traza.valid_prefix_length = 4;
     traza.temporal_order = ["E000003", "E000002", "E000001", "E000004"];
     await recargar(page);
-    await expect(page.locator('[data-part="cards"] li[data-event-id="E000004"]')).toHaveCount(1);
+    // El hito nuevo llega al modelo (timeline) y queda sin presentar, fuera de la lista.
+    await expect(page.locator('[data-part="timeline"] button[data-event-id="E000004"]')).toHaveCount(1);
+    await expect(page.locator('[data-part="pending-count"]')).toHaveText("1 nuevo sin presentar");
+    await expect(page.locator('[data-part="cards"] li[data-event-id="E000004"]')).toHaveCount(0);
     const estado = await lectura(page);
     expect(estado).toEqual({
       accion: "evidencia-0",
@@ -595,7 +598,7 @@ test.describe("recarga de la fuente (§11)", () => {
     await expect(relaciones(page).getByRole("button", { name: "Abrir E000004" })).toHaveCount(0);
     traza = conDestino(true);
     await recargar(page);
-    await expect(page.locator('[data-part="cards"] li[data-event-id="E000004"]')).toHaveCount(1);
+    await expect(page.locator('[data-part="timeline"] button[data-event-id="E000004"]')).toHaveCount(1);
     await expect(relaciones(page).getByRole("button", { name: "Abrir E000004" })).toHaveCount(1);
     await expect(inspector(page)).toHaveAttribute("data-event-id", "E000003");
   });

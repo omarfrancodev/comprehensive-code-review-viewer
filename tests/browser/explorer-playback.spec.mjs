@@ -91,12 +91,43 @@ test.describe("revelado progresivo del elemento", () => {
   test("Reiniciar: solo hay una tarjeta presentada y está en revealing", async ({ page }) => {
     await abrirTraza(page);
     await boton(page, "Reiniciar").click();
-    expect(await estados(page)).toEqual(["revealing", "received", "received"]);
+    expect(await estados(page)).toEqual(["revealing"]);
     await expect(tarjetaActual(page)).toHaveAttribute("data-event-id", "E000001");
     // En pausa el revelado queda en su punto inicial: nada avanza solo.
     await page.clock.runFor(3000);
-    expect(await estados(page)).toEqual(["revealing", "received", "received"]);
+    expect(await estados(page)).toEqual(["revealing"]);
     expect(await etapa(page, "E000001", "estructura")).toBe(0);
+  });
+
+  test("Reiniciar: la lista solo muestra el prefijo presentado y la búsqueda alcanza el resto", async ({ page }) => {
+    await abrirTraza(page);
+    await expect(tarjetas(page)).toHaveCount(3);
+    await boton(page, "Reiniciar").click();
+    // Solo E000001: E000002 y E000003 no muestran resumen, metadata ni acciones antes de su turno.
+    await expect(tarjetas(page)).toHaveCount(1);
+    await expect(tarjeta(page, "E000001")).toHaveAttribute("data-state", "revealing");
+    await expect(page.locator('[data-part="cards"] .tarjetas-rango')).toHaveText("Tarjetas 1–1 de 1");
+    // El timeline conserva los marcadores globales.
+    await expect(page.locator('[data-part="timeline"] button[data-event-id]')).toHaveCount(3);
+
+    await boton(page, "Reproducir").click();
+    await page.clock.runFor(2340);
+    await expect(tarjetas(page)).toHaveCount(1);
+    await page.clock.runFor(20);
+    await expect(tarjetas(page)).toHaveCount(2);
+    await expect(tarjeta(page, "E000002")).toHaveAttribute("data-state", "revealing");
+    await boton(page, "Pausar").click();
+
+    // La búsqueda recorre el modelo completo: el hito aún no presentado aparece como recibido.
+    await page.getByRole("searchbox", { name: "Buscar hitos" }).fill("E000003");
+    await expect(tarjetas(page)).toHaveCount(1);
+    await expect(tarjeta(page, "E000003")).toHaveAttribute("data-state", "received");
+    await expect(tarjeta(page, "E000003")).toContainText("Recibido · sin presentar");
+    // Seleccionarlo lo incorpora al prefijo presentado.
+    await tarjeta(page, "E000003").locator("button.tarjeta-boton").click();
+    await expect(tarjeta(page, "E000003")).toHaveAttribute("data-state", "complete");
+    await page.getByRole("searchbox", { name: "Buscar hitos" }).fill("");
+    await expect(tarjetas(page)).toHaveCount(3);
   });
 
   test("Reproducir: la siguiente aparece tras 2350 ms a 1× y sin anuncios por fotograma", async ({ page }) => {
@@ -108,7 +139,8 @@ test.describe("revelado progresivo del elemento", () => {
     });
     await reiniciarYReproducir(page);
     await page.clock.runFor(2340);
-    await expect(tarjeta(page, "E000002")).toHaveAttribute("data-state", "received");
+    // Aún no incorporada al recorrido: no está en la lista.
+    await expect(tarjeta(page, "E000002")).toHaveCount(0);
     await expect(tarjetaActual(page)).toHaveAttribute("data-event-id", "E000001");
     await page.clock.runFor(20);
     await expect(tarjetaActual(page)).toHaveAttribute("data-event-id", "E000002");
@@ -125,7 +157,7 @@ test.describe("revelado progresivo del elemento", () => {
     await page.getByRole("combobox", { name: "Velocidad" }).selectOption("2");
     await reiniciarYReproducir(page);
     await page.clock.runFor(1165);
-    await expect(tarjeta(page, "E000002")).toHaveAttribute("data-state", "received");
+    await expect(tarjeta(page, "E000002")).toHaveCount(0);
     await page.clock.runFor(20);
     await expect(tarjetaActual(page)).toHaveAttribute("data-event-id", "E000002");
     await expect(tarjeta(page, "E000002")).toHaveAttribute("data-state", "revealing");
@@ -154,7 +186,8 @@ test.describe("revelado progresivo del elemento", () => {
     // Termina el revelado (1800 ms) y empieza la separación de 550 ms.
     await page.clock.runFor(960);
     await expect(tarjeta(page, "E000001")).toHaveAttribute("data-state", "complete");
-    await expect(tarjeta(page, "E000002")).toHaveAttribute("data-state", "received");
+    // Durante la separación la siguiente todavía no se incorpora.
+    await expect(tarjeta(page, "E000002")).toHaveCount(0);
     const altoFinal = await tarjeta(page, "E000001").evaluate((li) => li.getBoundingClientRect().height);
     // Espacio estable: la tarjeta ocupa desde el principio su altura final.
     expect(Math.abs(altoFinal - altoInicial)).toBeLessThanOrEqual(1);
@@ -206,7 +239,7 @@ test.describe("revelado progresivo del elemento", () => {
     await expect(boton(page, "Reproducir")).toBeVisible();
     await page.clock.runFor(3000);
     await expect(tarjetaActual(page)).toHaveAttribute("data-event-id", "E000001");
-    await expect(tarjeta(page, "E000002")).toHaveAttribute("data-state", "received");
+    await expect(tarjeta(page, "E000002")).toHaveCount(0);
 
     // Durante la reproducción termina el efecto sin pausar.
     await reiniciarYReproducir(page);
@@ -381,13 +414,14 @@ test.describe("revelado progresivo del elemento", () => {
     await page.setViewportSize({ width: 1280, height: 600 });
     await abrirTraza(page, trazaSintetica(30));
     await reiniciarYReproducir(page);
-    await page.clock.runFor(2400);
-    await expect(tarjetaActual(page)).toHaveAttribute("data-event-id", "E000002");
+    // La lista crece con el recorrido: se avanza hasta tener tarjetas que desplazar.
+    await page.clock.runFor(2350 * 9 + 50);
+    await expect(tarjetaActual(page)).toHaveAttribute("data-event-id", "E000010");
     const seguir = boton(page, "Seguir recorrido");
     await expect(seguir).toHaveAttribute("aria-pressed", "true");
     await page.evaluate(() => window.scrollTo(0, 120));
     const panel = page.locator(".tarjetas-panel");
-    await panel.evaluate((nodo) => { nodo.scrollTop = 400; });
+    expect(await panel.evaluate((nodo) => { nodo.scrollTop = 0; nodo.scrollTop = 400; return nodo.scrollTop; })).toBeGreaterThan(0);
     await expect(seguir).toHaveAttribute("aria-pressed", "false");
     const paginaY = await page.evaluate(() => window.scrollY);
     // Tarjeta visible en lo alto del panel y su posición: las llegadas no la mueven.
@@ -399,7 +433,7 @@ test.describe("revelado progresivo del elemento", () => {
     const antes = await visible();
     expect(antes).not.toBeNull();
     await page.clock.runFor(2350 * 3);
-    await expect(tarjetaActual(page)).toHaveAttribute("data-event-id", "E000005");
+    await expect(tarjetaActual(page)).toHaveAttribute("data-event-id", "E000013");
     expect(await page.evaluate(() => window.scrollY)).toBe(paginaY);
     expect(await visible()).toEqual(antes);
     await expect(seguir).toHaveAttribute("aria-pressed", "false");
@@ -487,7 +521,7 @@ async function comprobarSinAnimaciones(page) {
   expect(await estados(page)).toEqual(["complete", "complete", "complete"]);
   await boton(page, "Reiniciar").click();
   await expect(tarjetaActual(page)).toHaveAttribute("data-event-id", "E000001");
-  expect(await estados(page)).toEqual(["complete", "received", "received"]);
+  expect(await estados(page)).toEqual(["complete"]);
   // El brillo (carga del revelado) queda sin animación aunque una tarjeta se revelara.
   const brillo = await tarjeta(page, "E000001").evaluate((li) => {
     li.dataset.state = "revealing";
