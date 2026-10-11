@@ -167,10 +167,13 @@ chips que se pueden quitar, junto con «Limpiar». Los filtros se aplican al
 servidor y vuelven a la primera página. Se pueden combinar repositorio, modo,
 referencia, tipo, perfil, veredicto, fecha de creación y estado
 (todas/abiertas/cerradas). Las sugerencias de valores proceden de la página
-actual y se rotulan como tales: no son un inventario global. Las fechas
-Desde/Hasta son inclusivas y usan el día declarado en la creación de la fuente;
-una fecha desconocida no coincide con un filtro de fechas. Cada página contiene
-hasta 50 corridas y se muestra el total filtrado.
+actual y se rotulan como tales: no son un inventario global. La lista, su
+detalle, la cabecera y el Resumen muestran el repositorio tal como se declaró;
+la agrupación y el filtro de repositorio usan su identidad normalizada (sin
+esquema ni `.git`), que es el valor que sugiere el filtro, rotulado con la forma
+declarada. Las fechas Desde/Hasta son inclusivas y usan el día declarado en la
+creación de la fuente; una fecha desconocida no coincide con un filtro de
+fechas. Cada página contiene hasta 50 corridas y se muestra el total filtrado.
 
 Si una recarga falla, la lista anterior se conserva con un aviso de que no está
 actualizada; no se aparenta que las revisiones desaparecieron. Cambiar un filtro

@@ -108,7 +108,8 @@ export function renderProfile(contenedor, view) {
         campo("Asunto", review?.presentation?.subject, { textoVacio: "Sin asunto declarado" }),
         campo("Tipo de revisión", review?.presentation?.kind, { textoVacio: "No declarado" }),
         campo("Revisión de origen", summary.source_review_id ?? review?.review_id, { textoVacio: "No identificado" }),
-        campo("Repositorio", summary.repository_identity ?? summary.repository_label),
+        // El repositorio declarado; la identidad normalizada es solo para comparar.
+        campo("Repositorio", summary.repository_label ?? summary.repository_identity),
         campo("Modo", scope("mode")),
         campo("Referencia", scope("reference") ?? summary.scope_reference),
         campo("Objetivo", scope("target")),

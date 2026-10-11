@@ -47,7 +47,7 @@ const CONTROLES = [
 ];
 const SUGERIBLES = ["repository", "mode", "reference"];
 
-/** Último segmento de la identidad del repositorio, para la fila compacta. */
+/** Último segmento del repositorio declarado, para la fila compacta. */
 function repositorioCorto(identidad) {
   const partes = String(identidad ?? "").split(/[\\/]+/).filter(Boolean);
   return partes.at(-1) ?? String(identidad ?? "");
@@ -57,8 +57,21 @@ function textoNoVacio(valor) {
   return typeof valor === "string" && valor.trim() !== "" ? valor : null;
 }
 
+/**
+ * Repositorio tal como se declaró (`repository_label`). La identidad
+ * normalizada (sin esquema ni `.git`) es solo para comparar: se muestra
+ * únicamente si falta la declarada.
+ */
 function repositorioDe(item) {
-  return textoNoVacio(item.repository_identity) ?? textoNoVacio(item.repository_label);
+  return textoNoVacio(item.repository_label) ?? textoNoVacio(item.repository_identity);
+}
+
+/** Clave de agrupación: la identidad normalizada; sin ella, la etiqueta declarada. */
+function grupoDe(item) {
+  const identidad = textoNoVacio(item.repository_identity);
+  if (identidad !== null) return `identidad:${identidad}`;
+  const etiqueta = textoNoVacio(item.repository_label);
+  return etiqueta === null ? null : `etiqueta:${etiqueta}`;
 }
 
 function estadoLegible(item) {
@@ -437,12 +450,35 @@ export function mountLibrary(container, { getState, dispatch }) {
     pintarChips(aplicados);
   }
 
+  /** Repositorios declarados en la página, por identidad normalizada. */
+  function declaradosPorIdentidad(items) {
+    const mapa = new Map();
+    for (const item of items) {
+      const identidad = textoNoVacio(item?.repository_identity);
+      const declarado = textoNoVacio(item?.repository_label);
+      if (identidad === null || declarado === null) continue;
+      if (!mapa.has(identidad)) mapa.set(identidad, new Set());
+      mapa.get(identidad).add(declarado);
+    }
+    return mapa;
+  }
+
   function actualizarSugerencias(items) {
+    const declarados = declaradosPorIdentidad(items);
     for (const clave of SUGERIBLES) {
       const valores = suggestFromPage(items, clave);
       const { datalist, nota } = listas[clave];
-      datalist.replaceChildren(...valores.map((valor) => elemento("option", { atributos: { value: valor } })));
-      nota.textContent = `Sugerencias de esta página: ${valores.length === 0 ? "ninguna" : valores.length}; no es un inventario completo.`;
+      datalist.replaceChildren(...valores.map((valor) => {
+        // El servidor filtra el repositorio por su identidad normalizada: ese es
+        // el valor sugerido, rotulado con el repositorio tal como se declaró.
+        const formas = clave === "repository" ? [...(declarados.get(valor) ?? [])].filter((forma) => forma !== valor) : [];
+        const atributos = formas.length > 0 ? { value: valor, label: `Declarado: ${formas.join(" · ")}` } : { value: valor };
+        return elemento("option", { atributos });
+      }));
+      const total = `Sugerencias de esta página: ${valores.length === 0 ? "ninguna" : valores.length}; no es un inventario completo.`;
+      nota.textContent = clave === "repository"
+        ? `${total} El filtro compara la identidad normalizada (sin esquema ni «.git»), no el valor declarado.`
+        : total;
     }
   }
 
@@ -510,13 +546,16 @@ export function mountLibrary(container, { getState, dispatch }) {
     // Se agrupa toda la página por repositorio, no solo las filas contiguas: el
     // servidor ordena por fecha entre repositorios. Los grupos siguen el orden
     // de primera aparición y cada uno conserva el orden del servidor.
+    // Se agrupa por identidad normalizada y el encabezado muestra el repositorio
+    // declarado del primer miembro; cada fila conserva en su detalle el suyo.
     const grupos = new Map();
     for (const item of items) {
-      const repositorio = repositorioDe(item);
-      if (!grupos.has(repositorio)) grupos.set(repositorio, []);
-      grupos.get(repositorio).push(item);
+      const clave = grupoDe(item);
+      if (!grupos.has(clave)) grupos.set(clave, []);
+      grupos.get(clave).push(item);
     }
-    for (const [repositorio, miembros] of grupos) {
+    for (const miembros of grupos.values()) {
+      const repositorio = repositorioDe(miembros[0]);
       const nodo = elemento("li", { clase: "grupo-revisiones" });
       nodo.append(
         elemento("h3", { texto: repositorio ?? "Repositorio no identificado", atributos: repositorio ? { title: repositorio } : {} }),

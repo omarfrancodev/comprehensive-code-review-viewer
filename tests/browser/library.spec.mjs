@@ -115,6 +115,51 @@ test.describe("UI-01 lista y paginación", () => {
     expect(mostradas).toHaveLength(30);
   });
 
+  test("muestra el repositorio declarado (esquema y «.git») y agrupa por la identidad normalizada", async ({ page }) => {
+    const DECLARADO = "https://git.ejemplo.invalid/acme/demo.git";
+    const IDENTIDAD = "git.ejemplo.invalid/acme/demo";
+    const library = bibliotecaSintetica(3, { interleaved: true });
+    // Filas 0 y 2 (no contiguas) del mismo repositorio, declarado de dos formas.
+    library.items[0] = { ...library.items[0], repository_label: DECLARADO, repository_identity: IDENTIDAD };
+    library.items[2] = { ...library.items[2], repository_label: IDENTIDAD, repository_identity: IDENTIDAD };
+    const vista = structuredClone(REVISION_SINTETICA);
+    vista.summary = { ...vista.summary, key: library.items[0].key, repository_label: DECLARADO, repository_identity: IDENTIDAD };
+    await openFixture(page, {
+      library,
+      onRun: (ruta) => ruta.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ api_version: 1, data: vista, diagnostics: [] }) }),
+    });
+
+    const grupos = page.locator("#biblioteca .grupo-revisiones > h3");
+    await expect(grupos).toHaveCount(2);
+    await expect(grupos.first()).toHaveText(DECLARADO);
+    const mostradas = await filas(page).evaluateAll((nodos) => nodos.map((nodo) => nodo.dataset.key));
+    expect(mostradas).toEqual([library.items[0].key, library.items[2].key, library.items[1].key]);
+    // Fila compacta: último segmento del valor declarado, con el valor completo en `title`.
+    const repo = filas(page).first().locator(".revision-repo");
+    await expect(repo).toHaveText("demo.git");
+    await expect(repo).toHaveAttribute("title", DECLARADO);
+    // Cada detalle muestra el repositorio que declaró su fila.
+    await page.locator(`#biblioteca summary[data-detalle="${library.items[0].key}"]`).click();
+    await expect(page.locator("#biblioteca .revision-campos").first()).toContainText(DECLARADO);
+    await page.locator(`#biblioteca summary[data-detalle="${library.items[2].key}"]`).click();
+    const detalle2 = page.locator("#biblioteca .revision-detalle").nth(1).locator(".revision-campos");
+    await expect(detalle2).toContainText(IDENTIDAD);
+    await expect(detalle2).not.toContainText(DECLARADO);
+
+    // La sugerencia de filtro es la identidad con la que filtra el servidor, rotulada con lo declarado.
+    await abrirFiltros(page);
+    const opcion = page.locator("#biblioteca datalist[id$='repository'] option").first();
+    await expect(opcion).toHaveAttribute("value", IDENTIDAD);
+    await expect(opcion).toHaveAttribute("label", `Declarado: ${DECLARADO}`);
+    await expect(panel(page).locator(".filtro-sugerencias").first()).toContainText("identidad normalizada");
+
+    // Cabecera de la revisión y Resumen: también el valor declarado.
+    await filas(page).first().click();
+    await expect(page.locator("#cabecera-revision .encabezado-repositorio")).toHaveText(`Repositorio: ${DECLARADO}`);
+    const campo = page.locator("#revision .campo").filter({ has: page.locator("dt", { hasText: /^Repositorio$/ }) });
+    await expect(campo.locator("dd")).toHaveText(DECLARADO);
+  });
+
   test("etiquetas coincidentes: dos filas «PR #42» muestran su ID de revisión distinto", async ({ page }) => {
     const library = bibliotecaSintetica(3, { sameTitle: true });
     await openFixture(page, { library });

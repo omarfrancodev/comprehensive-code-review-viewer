@@ -294,6 +294,23 @@ describe("renderRunHeader", () => {
     assert.match(comprobaciones, /Fallidas 1/);
   });
 
+  it("muestra el repositorio declarado, no la identidad normalizada solo para comparar", () => {
+    const nodo = crearElemento();
+    renderRunHeader(nodo, vista({}, {
+      repository_label: "https://git.ejemplo.invalid/acme/demo.git",
+      repository_identity: "git.ejemplo.invalid/acme/demo",
+    }));
+    const repositorio = nodo.descendientes().find((n) => n.className === "encabezado-repositorio");
+    assert.equal(repositorio.textContent, "Repositorio: https://git.ejemplo.invalid/acme/demo.git");
+  });
+
+  it("sin repositorio declarado recurre a la identidad", () => {
+    const nodo = crearElemento();
+    renderRunHeader(nodo, vista({}, { repository_label: null, repository_identity: "git.ejemplo.invalid/acme/demo" }));
+    const repositorio = nodo.descendientes().find((n) => n.className === "encabezado-repositorio");
+    assert.equal(repositorio.textContent, "Repositorio: git.ejemplo.invalid/acme/demo");
+  });
+
   it("no crea una puntuación ni un porcentaje", () => {
     const nodo = crearElemento();
     renderRunHeader(nodo, vista());
@@ -384,6 +401,20 @@ describe("Resumen (renderProfile)", () => {
     assert.match(texto, /Revisión sintética/);
     assert.match(texto, /CR-1111111111111111aaaa/);
     assert.equal(nodo.descendientes().filter((n) => n.tagName === "HEADER").length, 0);
+  });
+
+  it("muestra el repositorio declarado (con esquema y «.git»), no la identidad normalizada", () => {
+    const nodo = crearElemento();
+    const vista = revision();
+    vista.summary = {
+      ...vista.summary,
+      repository_label: "https://git.ejemplo.invalid/acme/demo.git",
+      repository_identity: "git.ejemplo.invalid/acme/demo",
+    };
+    renderProfile(nodo, vista);
+    const fila = nodo.descendientes().find((n) => n.tagName === "DIV" && n.children[0]?.tagName === "DT" && n.children[0].textContent === "Repositorio");
+    assert.ok(fila, "el Resumen tiene el campo Repositorio");
+    assert.equal(fila.children[1].textContent, "https://git.ejemplo.invalid/acme/demo.git");
   });
 
   it("separa Responsable y Autores del cambio en etiquetas propias", () => {

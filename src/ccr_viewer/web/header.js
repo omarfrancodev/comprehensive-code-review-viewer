@@ -120,7 +120,8 @@ export function renderRunHeader(container, view, { onCopy } = {}) {
   const summary = objeto(view.summary) ?? {};
 
   const titulo = textoNoVacio(review?.presentation?.subject) ?? runTitle(summary).label;
-  const repositorio = textoNoVacio(summary.repository_identity) ?? textoNoVacio(summary.repository_label);
+  // El repositorio declarado; la identidad normalizada es solo para comparar.
+  const repositorio = textoNoVacio(summary.repository_label) ?? textoNoVacio(summary.repository_identity);
   const id = textoNoVacio(summary.source_review_id) ?? textoNoVacio(review?.review_id);
   const referencia = review?.scope?.reference ?? closure?.scope?.reference ?? summary.scope_reference;
 
