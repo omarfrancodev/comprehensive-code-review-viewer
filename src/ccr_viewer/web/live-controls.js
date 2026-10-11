@@ -9,9 +9,10 @@
  *
  * El indicador de fuente (`data-part="source-loader"`) es distinto del brillo
  * del revelado (`data-part="shimmer"`): representa el cierre `processing` de
- * la revisión, no que un actor esté ejecutando algo. Sin conexión (o mientras
- * se espera la recarga tras reconectar) es un icono estático con «Último
- * estado conocido: processing · sin conexión».
+ * la revisión, no que un actor esté ejecutando algo. Cuando la fuente no puede
+ * actualizarse es un icono estático con «Último estado conocido: processing»
+ * y su motivo: sin conexión, datos no actualizados (lectura fallida) o
+ * esperando la recarga tras reconectar.
  */
 
 import { botonAccion, elemento, fijarInactivo } from "./dom.js";
@@ -19,7 +20,15 @@ import { botonAccion, elemento, fijarInactivo } from "./dom.js";
 export const ETIQUETA_FUENTE_ACTIVA = "Último hito activo · revisión en procesamiento";
 export const ETIQUETA_FUENTE_ESTATICA = "Último estado conocido: processing · sin conexión";
 
+/** Etiqueta estática por motivo (`loaderReason` del presentador). */
+const ETIQUETAS_ESTATICAS = {
+  offline: ETIQUETA_FUENTE_ESTATICA,
+  stale: "Último estado conocido: processing · datos no actualizados",
+  reconnecting: "Último estado conocido: processing · esperando recarga",
+};
+
 const MOTIVOS = {
+  verifying: "En Vivo no disponible hasta confirmar el cierre con una lectura coherente.",
   updating: "Archivo en actualización",
   not_processing: "En Vivo no disponible: la revisión no está en procesamiento.",
   unknown: "En Vivo no disponible: el estado del cierre es desconocido; no se infiere actividad.",
@@ -27,9 +36,10 @@ const MOTIVOS = {
 
 let montajes = 0;
 
-/** Texto de la carga de fuente según su tipo (`active` o `static`). */
-export function etiquetaFuente(tipo) {
-  return tipo === "static" ? ETIQUETA_FUENTE_ESTATICA : ETIQUETA_FUENTE_ACTIVA;
+/** Texto de la carga de fuente según su tipo (`active` o `static`) y el motivo de la estática. */
+export function etiquetaFuente(tipo, motivo) {
+  if (tipo !== "static") return ETIQUETA_FUENTE_ACTIVA;
+  return ETIQUETAS_ESTATICAS[motivo] ?? ETIQUETA_FUENTE_ESTATICA;
 }
 
 /** Nodo del indicador de fuente: icono decorativo y etiqueta textual. */
@@ -43,11 +53,13 @@ export function nodoCargaFuente({ oculto = false } = {}) {
   return nodo;
 }
 
-/** Ajusta el indicador a `active` o `static` (solo escribe si cambia). */
-export function fijarCargaFuente(nodo, tipo) {
-  if (nodo.dataset.loader === tipo) return;
+/** Ajusta el indicador a `active` o `static` con su motivo (solo escribe si cambia). */
+export function fijarCargaFuente(nodo, tipo, motivo) {
+  const texto = etiquetaFuente(tipo, motivo);
+  if (nodo.dataset.loader === tipo && nodo.dataset.texto === texto) return;
   nodo.dataset.loader = tipo;
-  nodo.querySelector(".fuente-texto").textContent = etiquetaFuente(tipo);
+  nodo.dataset.texto = texto;
+  nodo.querySelector(".fuente-texto").textContent = texto;
 }
 
 /**
@@ -131,10 +143,11 @@ export function mountLiveControls(container, { presenter, isMounted = () => true
     ultimoMostrable = fuera ? ultimo : null;
     if (fuera) {
       fuenteTexto.textContent = `Último activo: ${ultimo}`;
-      fuenteEstado.textContent = actual.loader === "static" ? ` · ${ETIQUETA_FUENTE_ESTATICA}` : "";
+      fuenteEstado.textContent = actual.loader === "static" ? ` · ${etiquetaFuente("static", actual.loaderReason)}` : "";
     }
     ocultar(fuente, !fuera);
     raiz.dataset.loader = actual.loader;
+    raiz.dataset.availability = actual.live.reason;
 
     // Diagnósticos de la recarga (prefijo, hito eliminado o modificado, fin de
     // En Vivo) quedan visibles; las llegadas se reflejan en el contador.

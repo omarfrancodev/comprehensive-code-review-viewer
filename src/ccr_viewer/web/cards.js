@@ -195,7 +195,7 @@ export function crearTarjetas({ onSelect, onPagina, onDesplazar, onAccion }) {
   }
 
   /** Indicador de fuente sobre la tarjeta (`tipo`: `active`, `static` o `null`). */
-  function marcarFuente(entrada, tipo) {
+  function marcarFuente(entrada, tipo, motivo) {
     const { li } = entrada;
     if (!tipo) {
       if (!entrada.fuente) return;
@@ -205,7 +205,7 @@ export function crearTarjetas({ onSelect, onPagina, onDesplazar, onAccion }) {
       return;
     }
     entrada.fuente ??= nodoCargaFuente();
-    fijarCargaFuente(entrada.fuente, tipo);
+    fijarCargaFuente(entrada.fuente, tipo, motivo);
     // `llenar` reconstruye los hijos: el indicador vuelve a su sitio.
     if (entrada.fuente.parentNode !== li) li.append(entrada.fuente);
     if (li.dataset.activeSource !== "true") li.dataset.activeSource = "true";
@@ -213,7 +213,7 @@ export function crearTarjetas({ onSelect, onPagina, onDesplazar, onAccion }) {
 
   function sincronizar(actual, modelo) {
     for (const [id, entrada] of cache) {
-      marcarFuente(entrada, id === actual.lastActiveId && actual.loader !== "off" ? actual.loader : null);
+      marcarFuente(entrada, id === actual.lastActiveId && actual.loader !== "off" ? actual.loader : null, actual.loaderReason);
       const estado = estadoDeTarjeta(id, modelo, actual);
       if (entrada.li.dataset.state !== estado) entrada.li.dataset.state = estado;
       entrada.recibido.hidden = estado !== "received";

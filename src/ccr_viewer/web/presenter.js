@@ -40,10 +40,12 @@ export function revealStages(progress) {
 /**
  * Disponibilidad de En Vivo, exclusivamente por el estado del cierre.
  *
- * Un cierre parcial (`partial`) nunca habilita: `updating`. Un estado ausente,
- * vacío o desconocido no equivale a `processing`: `unknown`.
+ * Un cierre aún sin confirmar por una lectura coherente (`verifying`) nunca
+ * habilita: `verifying`. Un cierre parcial (`partial`) tampoco: `updating`. Un
+ * estado ausente, vacío o desconocido no equivale a `processing`: `unknown`.
  */
 export function liveAvailability(ctx) {
+  if (ctx?.verifying) return { enabled: false, reason: "verifying" };
   if (ctx?.partial) return { enabled: false, reason: "updating" };
   const estado = ctx?.closureState;
   if (estado === "processing") return { enabled: true, reason: "processing" };
@@ -51,10 +53,16 @@ export function liveAvailability(ctx) {
   return { enabled: false, reason: "unknown" };
 }
 
+/**
+ * `verifying` (cierre leído sin la comprobación vista/traza/vista) se trata
+ * como un cierre parcial: no habilita ni expulsa de En Vivo y no rige la carga.
+ */
 function contextoDe(ctx) {
+  const verifying = Boolean(ctx?.verifying);
   return {
     closureState: ctx?.closureState,
-    partial: Boolean(ctx?.partial),
+    partial: Boolean(ctx?.partial) || verifying,
+    verifying,
     connected: ctx?.connected !== false,
   };
 }
@@ -86,6 +94,9 @@ export function createPresenter(opts = {}) {
   let conectado = true;
   // Tras reconectar se espera una recarga antes de restablecer la carga activa.
   let esperaRecarga = false;
+  // Una lectura falló (error, traza no leída o archivo en actualización): la
+  // fuente no pudo actualizarse y la carga es estática hasta una lectura fresca.
+  let obsoleto = false;
   let aviso = null;
   let contadorAvisos = 0;
   let playback = null;
@@ -107,7 +118,11 @@ export function createPresenter(opts = {}) {
     }
     const posicion = indiceDe(pb.selectedEventId);
     let loader = "off";
-    if (procesando) loader = !conectado || esperaRecarga ? "static" : "active";
+    let loaderReason = null;
+    if (procesando) {
+      loaderReason = !conectado ? "offline" : obsoleto ? "stale" : esperaRecarga ? "reconnecting" : null;
+      loader = loaderReason ? "static" : "active";
+    }
     return {
       mode: modo,
       paused: pausado,
@@ -120,6 +135,7 @@ export function createPresenter(opts = {}) {
       live: liveAvailability(contexto),
       lastActiveId: procesando ? modelo.lastId : null,
       loader,
+      loaderReason,
       waitingFirst: procesando && modelo.events.length === 0,
       notice: aviso ? { ...aviso } : null,
       canPlay: modo === "replay" && posicion >= 0 && posicion < modelo.events.length - 1,
@@ -257,6 +273,7 @@ export function createPresenter(opts = {}) {
         cierre = contexto.partial ? null : contexto.closureState;
         conectado = contexto.connected;
         esperaRecarga = false;
+        obsoleto = Boolean(ctx?.stale);
         modo = "replay";
         pausado = true;
         siguiendo = false;
@@ -283,7 +300,14 @@ export function createPresenter(opts = {}) {
         modelo = model;
         contexto = contextoDe(ctx);
         if (typeof ctx?.connected === "boolean") conectado = ctx.connected;
-        esperaRecarga = false;
+        // Solo una lectura coherente completa (no parcial y con traza fresca)
+        // restablece la carga; `stale` declara que la traza no se pudo leer.
+        if (ctx?.stale === true) {
+          obsoleto = true;
+        } else if (!contexto.partial) {
+          obsoleto = false;
+          esperaRecarga = false;
+        }
 
         playback.ingest(modelo.events);
         pendientes = pendientes.filter((id) => modelo.byId.has(id));
@@ -390,6 +414,13 @@ export function createPresenter(opts = {}) {
           conectado = true;
           esperaRecarga = true;
         }
+      });
+    },
+
+    /** La fuente no pudo leerse: carga estática hasta la próxima lectura fresca. */
+    setStale(flag = true) {
+      operar(() => {
+        obsoleto = Boolean(flag);
       });
     },
 

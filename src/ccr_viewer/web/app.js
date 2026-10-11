@@ -256,10 +256,16 @@ function contextoDeTraza(vista) {
  * Crea el presentador de una corrida y lo enlaza con el hito del store sin
  * reproducir nada. Arranca en pausa con el último hito; esa selección inicial
  * no se escribe en la URL: solo los cambios posteriores (navegación, avance).
+ *
+ * Decisión (R11): la vista y la traza de la primera apertura se leyeron por
+ * separado, sin comprobación vista/traza/vista (y quizá antes de abrir el canal
+ * de avisos). El presentador arranca con el cierre «por confirmar»
+ * (`verifying`): En Vivo deshabilitado y sin carga. Quien lo crea pide una
+ * lectura coherente (`vivo.verify()`), que fija la disponibilidad real.
  */
 function crearPresentador(modelo, vista) {
   const control = createPresenter({ reducedMotion: prefersReducedMotion(store.getState().prefs) });
-  control.load(modelo, contextoDeTraza(vista));
+  control.load(modelo, { ...contextoDeTraza(vista), verifying: true });
   const objetivo = store.getState().selectedEventId;
   if (objetivo) {
     if (modelo.byId.has(objetivo)) {
@@ -386,6 +392,27 @@ function memoriaDe(clave) {
   return memoriaVistas;
 }
 
+/** Monta el explorador de `clave` con el modelo y el presentador vigentes. */
+function montarExplorador(clave) {
+  revisionNodo.replaceChildren();
+  explorador = {
+    run: clave,
+    api: mountExplorer(revisionNodo, {
+      model: modeloTraza,
+      presenter: presentador,
+      runKey: clave,
+      onSelect: alSeleccionarHito,
+      inspector: shell.regions.inspector,
+      openDialog: abrirDialogo,
+      // El inventario solo se pide si un hito declara evidencia.
+      inventory: () => getFiles(clave),
+      onNavigate: navegarDesdeInspector,
+    }),
+  };
+  if (avisoHito) revisionNodo.prepend(elemento("p", { clase: "estado estado--aviso", texto: avisoHito }));
+  avisoHito = null;
+}
+
 function dibujarRevision() {
   const estado = store.getState();
   const currentGeneration = ++generation;
@@ -468,9 +495,13 @@ function dibujarRevision() {
   } else if (conservarExplorador) {
     // Recarga de la misma corrida: `live-reload.js` ya entregó al presentador y
     // al explorador montado el modelo coherente; aquí no se vuelve a pedir.
+  } else if (presentador && modeloTraza && ultimaTraza === estado.selectedRun) {
+    // Vuelta a la pestaña: el presentador siguió recibiendo las recargas
+    // coherentes; se monta con su modelo y se comprueba con una lectura nueva.
+    montarExplorador(estado.selectedRun);
+    vivo.verify();
   } else {
-    // La trazabilidad se interpreta antes de mostrarse. Volver a la pestaña con
-    // un presentador vivo compara con su modelo completo anterior.
+    // La trazabilidad se interpreta antes de mostrarse.
     const clave = estado.selectedRun;
     revisionNodo.append(elemento("p", { clase: "estado", texto: "Cargando trazabilidad…" }));
     void getTrace(clave)
@@ -482,31 +513,18 @@ function dibujarRevision() {
           // Corrida nueva: sin modelo anterior no hay «nuevos» que comparar.
           presentador = crearPresentador(modelo, store.getState().view ?? estado.view);
         } else {
+          // El cierre de esta lectura suelta sigue «por confirmar».
           diff = reconcileTrace(modeloTraza, modelo);
-          presentador.update(modelo, contextoDeTraza(store.getState().view ?? estado.view), diff);
+          presentador.update(modelo, { ...contextoDeTraza(store.getState().view ?? estado.view), verifying: true }, diff);
         }
         modeloTraza = modelo;
+        // Lectura coherente que confirma el cierre (y lo ocurrido antes de abrir el canal).
+        vivo.verify();
         if (explorador?.run === clave) {
           explorador.api.update(modelo, diff);
           return;
         }
-        revisionNodo.replaceChildren();
-        explorador = {
-          run: clave,
-          api: mountExplorer(revisionNodo, {
-            model: modelo,
-            presenter: presentador,
-            runKey: clave,
-            onSelect: alSeleccionarHito,
-            inspector: shell.regions.inspector,
-            openDialog: abrirDialogo,
-            // El inventario solo se pide si un hito declara evidencia.
-            inventory: () => getFiles(clave),
-            onNavigate: navegarDesdeInspector,
-          }),
-        };
-        if (avisoHito) revisionNodo.prepend(elemento("p", { clase: "estado estado--aviso", texto: avisoHito }));
-        avisoHito = null;
+        montarExplorador(clave);
       })
       .catch((error) => {
         if (generation !== currentGeneration) return;

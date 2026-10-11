@@ -75,6 +75,11 @@ const fuenteViva = (page) => page.locator('[data-part="live-source"]');
 const avisoTraza = (page) => page.locator('[data-part="live-notice"]');
 const banda = (page) => page.locator('[data-part="source-notice"]');
 const animacion = (locator) => locator.evaluate((nodo) => getComputedStyle(nodo).animationName);
+const FALLO_LECTURA = {
+  status: 500,
+  contentType: "application/json",
+  body: JSON.stringify({ api_version: 1, error: { code: "read_failed", message: "No se pudo leer la revisión." } }),
+};
 
 /**
  * Abre la corrida sintética en Trazabilidad con avisos controlables. Devuelve
@@ -96,6 +101,8 @@ async function abrirVivo(page, { cierre = "processing", vista = null, traza = TR
     },
   });
   await expect(page.locator("[data-explorer]")).toBeVisible();
+  // La primera apertura confirma el cierre con una lectura coherente.
+  await expect(page.locator('[data-part="live"]')).not.toHaveAttribute("data-availability", "verifying", { timeout: 8000 });
   if (reloj) await page.clock.pauseAt(new Date(Date.now() + 60_000));
   return fuente;
 }
@@ -455,6 +462,58 @@ test.describe("LV-04 pausa y cola de lectura", () => {
     await expect(cargaDe(page, "E000004")).toContainText(ETIQUETA_ACTIVO);
     await expect(banda(page)).toBeHidden();
   });
+});
+
+test("error de lectura: icono estático «datos no actualizados» hasta una recarga correcta", async ({ page }) => {
+  const fuente = await abrirVivo(page);
+  const icono = cargaDe(page, "E000003").locator(".fuente-icono");
+  await expect(cargaDe(page, "E000003")).toHaveAttribute("data-loader", "active");
+  expect(await animacion(icono)).not.toBe("none");
+  fuente.error = FALLO_LECTURA;
+  await avisar(page);
+  await expect(banda(page)).toContainText("Datos no actualizados");
+  await expect(cargaDe(page, "E000003")).toHaveAttribute("data-loader", "static");
+  await expect(cargaDe(page, "E000003")).toContainText("Último estado conocido: processing · datos no actualizados");
+  expect(await animacion(icono)).toBe("none");
+  await expect(marcador(page, "E000003")).toHaveAttribute("aria-label", /datos no actualizados/);
+
+  fuente.error = null;
+  await avisar(page);
+  await expect(cargaDe(page, "E000003")).toHaveAttribute("data-loader", "active");
+  await expect(cargaDe(page, "E000003")).toContainText(ETIQUETA_ACTIVO);
+  expect(await animacion(icono)).not.toBe("none");
+  await expect(banda(page)).toBeHidden();
+});
+
+test("primera apertura: el cierre se confirma con una lectura coherente sin esperar un aviso", async ({ page }) => {
+  // La primera vista dice `processing`; la relectura coherente, `complete`.
+  await page.addInitScript(() => {
+    window.__habilitado = false;
+    window.__cargaVista = false;
+    new MutationObserver(() => {
+      const boton = document.querySelector('[data-part="live-toggle"]');
+      if (boton && boton.getAttribute("aria-disabled") !== "true") window.__habilitado = true;
+      if (document.querySelector('[data-active-source="true"], [data-part="source-loader"]')) window.__cargaVista = true;
+    }).observe(document, { subtree: true, childList: true, attributes: true });
+  });
+  const fuente = { vistas: 0 };
+  await installFakeEventSource(page);
+  await page.route("**/api/runs/*/trace", (ruta) => ruta.fulfill(sobre(TRAZA_SINTETICA)));
+  await openFixture(page, {
+    ruta: `/?run=${CLAVE}&tab=trazabilidad`,
+    onRun: (ruta) => {
+      fuente.vistas += 1;
+      return ruta.fulfill(sobre(vistaCon(fuente.vistas === 1 ? "processing" : "complete")));
+    },
+  });
+  await expect(page.locator("[data-explorer]")).toBeVisible();
+  await expect(motivo(page)).toContainText("no está en procesamiento");
+  expect(fuente.vistas).toBeGreaterThanOrEqual(3);
+  await expect(enVivo(page)).toBeDisabled();
+  await expect(fuentesActivas(page)).toHaveCount(0);
+  await expect(page.locator('[data-part="source-loader"]')).toHaveCount(0);
+  await expect(banda(page)).toBeHidden();
+  expect(await page.evaluate(() => [window.__habilitado, window.__cargaVista])).toEqual([false, false]);
 });
 
 test("sesión caducada: aviso fijo, conserva la última vista y no entra en bucle", async ({ page }) => {

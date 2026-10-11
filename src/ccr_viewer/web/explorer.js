@@ -329,7 +329,7 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
       timeline.seleccionar(id);
     }
     controles.sincronizar(actual, modelo, seguirActivo(actual));
-    timeline.marcarFuente(actual.lastActiveId, actual.loader);
+    timeline.marcarFuente(actual.lastActiveId, actual.loader, actual.loaderReason);
     pintarVacio(actual);
     vivo.update();
     raiz.dataset.playback = actual.paused ? "paused" : "playing";

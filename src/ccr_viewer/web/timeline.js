@@ -98,11 +98,11 @@ export function crearTimeline({ onSelect, onVentana }) {
   let inicio = 0;
   let cantidad = 0;
   // Último hito activo y tipo de su indicador (`active`/`static`), o nada.
-  let fuente = { id: null, tipo: null };
+  let fuente = { id: null, tipo: null, motivo: null };
 
   /** Nombre accesible: ID, hora y base; y la etiqueta de fuente si es el último activo. */
   function etiquetar(entrada) {
-    const nombre = entrada.tipoFuente ? `${entrada.nombre} · ${etiquetaFuente(entrada.tipoFuente)}` : entrada.nombre;
+    const nombre = entrada.tipoFuente ? `${entrada.nombre} · ${etiquetaFuente(entrada.tipoFuente, fuente.motivo)}` : entrada.nombre;
     entrada.boton.setAttribute("aria-label", nombre);
     entrada.boton.title = nombre;
   }
@@ -119,12 +119,14 @@ export function crearTimeline({ onSelect, onVentana }) {
   function aplicarFuente() {
     for (const [clave, entrada] of cache) {
       const tipo = clave === fuente.id ? fuente.tipo : null;
-      if ((entrada.tipoFuente ?? null) === tipo) continue;
+      const firma = tipo ? `${tipo}:${fuente.motivo}` : null;
+      if ((entrada.firmaFuente ?? null) === firma) continue;
+      entrada.firmaFuente = firma;
       entrada.tipoFuente = tipo;
       if (tipo) {
         entrada.boton.dataset.activeSource = "true";
         entrada.carga ??= nodoCargaFuente({ oculto: true });
-        fijarCargaFuente(entrada.carga, tipo);
+        fijarCargaFuente(entrada.carga, tipo, fuente.motivo);
         entrada.li.append(entrada.carga);
       } else {
         delete entrada.boton.dataset.activeSource;
@@ -195,10 +197,12 @@ export function crearTimeline({ onSelect, onVentana }) {
       seleccionar(seleccionado);
     },
     seleccionar,
-    /** Último hito activo (`id`) con su indicador (`active`/`static`); `null` lo retira. */
-    marcarFuente(id, tipo) {
-      const siguiente = typeof id === "string" && (tipo === "active" || tipo === "static") ? { id, tipo } : { id: null, tipo: null };
-      if (siguiente.id === fuente.id && siguiente.tipo === fuente.tipo) return;
+    /** Último hito activo (`id`) con su indicador (`active`/`static`) y motivo; `null` lo retira. */
+    marcarFuente(id, tipo, motivo = null) {
+      const siguiente = typeof id === "string" && (tipo === "active" || tipo === "static")
+        ? { id, tipo, motivo: tipo === "static" ? motivo : null }
+        : { id: null, tipo: null, motivo: null };
+      if (siguiente.id === fuente.id && siguiente.tipo === fuente.tipo && siguiente.motivo === fuente.motivo) return;
       fuente = siguiente;
       aplicarFuente();
     },

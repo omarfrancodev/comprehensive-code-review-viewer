@@ -204,6 +204,86 @@ describe("createLiveReload", () => {
     assert.equal(m.registro.vistas.length, 1);
   });
 
+  describe("una lectura fallida deja la carga estática hasta una lectura fresca (§8.2)", () => {
+    /** Montaje en processing y conectado, con la carga activa. */
+    function conectado() {
+      const m = montar();
+      m.vivo.connection("connected");
+      assert.equal(m.presentador.state().loader, "active");
+      return m;
+    }
+
+    async function reconectar(m) {
+      m.vivo.connection("disconnected");
+      m.vivo.connection("connected");
+      assert.equal(m.presentador.state().loader, "static");
+    }
+
+    it("(A) reconexión seguida de una lectura updating: sigue estática", async () => {
+      const m = conectado();
+      await reconectar(m);
+      m.fuente.vista = vista("processing", { updating: true });
+      m.clock.advance(100);
+      await drenar();
+      assert.equal(m.vivo.status().code, "updating");
+      assert.equal(m.presentador.state().loader, "static");
+    });
+
+    it("(B) error al leer la vista: estática con motivo «stale»", async () => {
+      const m = conectado();
+      m.fuente.vista = new Error("fallo 500");
+      await avisar(m);
+      assert.equal(m.vivo.status().code, "stale");
+      assert.equal(m.presentador.state().loader, "static");
+      assert.equal(m.presentador.state().loaderReason, "stale");
+      // Una lectura coherente completa la restablece.
+      m.fuente.vista = vista("processing");
+      await avisar(m);
+      assert.equal(m.presentador.state().loader, "active");
+      assert.equal(m.vivo.status(), null);
+    });
+
+    it("(C) trace_failed: estática aunque el cierre coherente se aplique", async () => {
+      const m = conectado();
+      m.fuente.traza = new Error("traza ilegible");
+      await avisar(m);
+      assert.equal(m.vivo.status().code, "stale");
+      assert.equal(m.presentador.state().loader, "static");
+    });
+
+    it("(D) reconexión seguida de trace_failed: sigue estática", async () => {
+      const m = conectado();
+      await reconectar(m);
+      m.fuente.traza = new Error("traza ilegible");
+      m.clock.advance(100);
+      await drenar();
+      assert.equal(m.presentador.state().loader, "static");
+      // Ni una actualización parcial posterior la restablece.
+      m.fuente.traza = trazaSintetica(3, { chain: "updating" });
+      m.fuente.vista = vista("processing", { updating: true });
+      await avisar(m);
+      assert.equal(m.presentador.state().loader, "static");
+      m.fuente.vista = vista("processing");
+      await avisar(m);
+      assert.equal(m.presentador.state().loader, "active");
+    });
+  });
+
+  it("verify: la primera lectura coherente fija la disponibilidad sin forzar la banda", async () => {
+    const m = montar();
+    m.presentador.load(m.modelo(), { closureState: "processing", verifying: true });
+    assert.deepEqual(m.presentador.state().live, { enabled: false, reason: "verifying" });
+    assert.equal(m.presentador.state().loader, "off");
+    m.fuente.vista = vista("complete");
+    m.vivo.verify();
+    m.clock.advance(100);
+    await drenar();
+    assert.deepEqual(m.presentador.state().live, { enabled: false, reason: "not_processing" });
+    assert.equal(m.presentador.state().loader, "off");
+    assert.equal(m.vivo.status(), null);
+    assert.deepEqual(m.registro.estados, []);
+  });
+
   it("sin presentador solo entrega la vista coherente", async () => {
     const m = montar({ conPresentador: false });
     await avisar(m);

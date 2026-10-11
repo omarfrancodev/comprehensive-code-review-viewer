@@ -16,6 +16,11 @@
  *   se busca un token en el almacenamiento.
  * - Desconexión: «Datos no actualizados» y carga estática; al reconectar se
  *   recarga antes de restablecer la carga o contar nuevos.
+ * - Toda lectura fallida (error, `trace_failed`, `updating`) marca la fuente
+ *   como obsoleta en el presentador: la carga queda estática y solo una lectura
+ *   coherente completa con traza fresca la restablece.
+ * - `verify()`: lectura coherente inicial al crear el presentador de una
+ *   corrida o volver a su traza; hasta entonces En Vivo no se habilita.
  *
  * Cada carga comprueba que su generación sigue vigente después de cada espera
  * y antes de escribir: cambiar de corrida (`runChanged`) cancela lo agrupado y
@@ -171,6 +176,7 @@ export function createLiveReload(deps) {
         return;
       }
       if (!vigente()) return;
+      trace()?.presenter?.setStale(true);
       fijarEstado({ code: "stale", text: TEXTO_NO_ACTUALIZADO, retry: true });
       return;
     }
@@ -186,7 +192,7 @@ export function createLiveReload(deps) {
     if (resultado.status === "updating") {
       // Se conserva el modelo anterior; un cierre parcial no habilita En Vivo
       // ni expulsa de él a quien ya lo sigue.
-      if (presentador && pista.model) presentador.update(pista.model, { closureState: cierre, partial: true }, SIN_CAMBIOS);
+      if (presentador && pista.model) presentador.update(pista.model, { closureState: cierre, partial: true, stale: true }, SIN_CAMBIOS);
       fijarEstado({ code: "updating", text: TEXTO_ACTUALIZACION, retry: true });
       return;
     }
@@ -196,7 +202,7 @@ export function createLiveReload(deps) {
     const contexto = { closureState: cierre, partial: false };
     if (resultado.status === "trace_failed") {
       // Solo el cierre nuevo; la traza anterior se conserva con su aviso.
-      if (presentador && pista.model) presentador.update(pista.model, contexto, SIN_CAMBIOS);
+      if (presentador && pista.model) presentador.update(pista.model, { ...contexto, stale: true }, SIN_CAMBIOS);
       fijarEstado({ code: "stale", text: TEXTO_NO_ACTUALIZADO, retry: true });
       return;
     }
@@ -240,6 +246,16 @@ export function createLiveReload(deps) {
     /** `false` mientras el canal esté caído o la sesión haya caducado. */
     connected() {
       return !caducada && conexion !== "disconnected";
+    },
+
+    /**
+     * Lectura coherente de comprobación (primera apertura de la traza o vuelta
+     * a ella): confirma el cierre sin forzar la entrega de una vista idéntica.
+     * La banda solo aparece si la lectura resulta incoherente o falla.
+     */
+    verify() {
+      if (destruido || caducada || !runKey()) return;
+      scheduler.request();
     },
 
     /** «Reintentar» explícito de la banda. */
