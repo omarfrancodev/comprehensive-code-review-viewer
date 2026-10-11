@@ -12,8 +12,9 @@ import {
   subscribeNotices,
 } from "./api.js";
 import { createStore } from "./store.js";
-import { renderLifecycle } from "./lifecycle.js";
-import { createPlayback } from "./playback.js";
+import { mountExplorer } from "./explorer.js";
+import { createPresenter } from "./presenter.js";
+import { buildTraceModel, reconcileTrace } from "./trace-model.js";
 import {
   mountLibrary,
   renderArchive,
@@ -25,7 +26,7 @@ import {
   renderValidation,
 } from "./views.js";
 import { campo, capturarInterfaz, elemento, listaDefinitiva, restaurarInterfaz } from "./dom.js";
-import { applyPrefs, loadPrefs, savePrefs } from "./prefs.js";
+import { applyPrefs, loadPrefs, prefersReducedMotion, savePrefs } from "./prefs.js";
 import { buildRoute, parseRoute } from "./route.js";
 import { createTabs, mountShell } from "./shell.js";
 
@@ -44,15 +45,21 @@ const AVISO_RUTA = "La dirección no corresponde a una revisión disponible; no 
 const AVISO_HITO = "El hito indicado en la dirección no existe en esta traza; se conserva la selección disponible.";
 const AVISO_RESYNC = "La biblioteca se recargará para mostrar una versión coherente.";
 
-let repeticion = null;
+// Presentador y modelo de la traza de la corrida seleccionada: uno por corrida,
+// sobrevive a los cambios de pestaña y se destruye al cambiar de revisión.
+let presentador = null;
+let modeloTraza = null;
 let ultimaTraza = null;
+// Explorador montado en Trazabilidad y corrida a la que pertenece.
+let explorador = null;
+// Último aviso del presentador anunciado: `notice` persiste hasta el siguiente.
+let ultimoAvisoTraza = null;
 // El desplazamiento se guarda aparte: despachar en cada evento de scroll
 // redibujaría la pantalla entera y perdería el foco de los controles.
 let desplazamiento = 0;
 let generation = 0;
 let revisionRequest = 0;
 let libraryRequest = 0;
-let disposeLifecycle = null;
 let renderedState = null;
 // Vista con la que se dibujó la cabecera: no se repinta si no cambia.
 let cabeceraVista = null;
@@ -159,12 +166,28 @@ function dibujarCabecera(vista) {
   if (conFoco) cabeceraNodo.querySelector(".copiar-id")?.focus();
 }
 
-/** Enlaza la reproducción con el hito del store sin reproducir nada. */
-function enlazarRepeticion(control) {
+function destruirExplorador() {
+  explorador?.api.destroy();
+  explorador = null;
+}
+
+/** Contexto de cierre de la vista para el presentador (En Vivo llega en la Tarea 12). */
+function contextoDeTraza(vista) {
+  return { closureState: vista?.closure?.state };
+}
+
+/**
+ * Crea el presentador de una corrida y lo enlaza con el hito del store sin
+ * reproducir nada. Arranca en pausa con el último hito; esa selección inicial
+ * no se escribe en la URL: solo los cambios posteriores (navegación, avance).
+ */
+function crearPresentador(modelo, vista) {
+  const control = createPresenter({ reducedMotion: prefersReducedMotion(store.getState().prefs) });
+  control.load(modelo, contextoDeTraza(vista));
   const objetivo = store.getState().selectedEventId;
   if (objetivo) {
-    if (control.event(objetivo)) {
-      control.seek(objetivo);
+    if (modelo.byId.has(objetivo)) {
+      control.select(objetivo, "route");
     } else {
       avisoHito = AVISO_HITO;
       shell.announce(AVISO_HITO);
@@ -172,12 +195,23 @@ function enlazarRepeticion(control) {
       reemplazarRuta();
     }
   }
-  // La reproducción arranca en pausa y solo notifica cambios (navegación,
-  // avance o una instantánea distinta): sin interacción la URL no fija hito.
+  let ultimaSeleccion = control.state().selectedId;
   control.subscribe((estado) => {
-    const id = estado.selectedEventId;
-    if (id !== store.getState().selectedEventId) store.dispatch({ type: "selectEvent", eventId: id });
+    // `notice` persiste hasta el siguiente: cada ID se anuncia una sola vez.
+    if (estado.notice && estado.notice.id !== ultimoAvisoTraza) {
+      ultimoAvisoTraza = estado.notice.id;
+      shell.announce(estado.notice.text);
+    }
+    if (estado.selectedId === ultimaSeleccion) return;
+    ultimaSeleccion = estado.selectedId;
+    if (estado.selectedId !== store.getState().selectedEventId) store.dispatch({ type: "selectEvent", eventId: estado.selectedId });
   });
+  return control;
+}
+
+/** Selección explícita desde el explorador: el store (y la URL) la reflejan. */
+function alSeleccionarHito(eventId) {
+  if (eventId !== store.getState().selectedEventId) store.dispatch({ type: "selectEvent", eventId });
 }
 
 function memoriaDe(clave) {
@@ -188,13 +222,20 @@ function memoriaDe(clave) {
 function dibujarRevision() {
   const estado = store.getState();
   const currentGeneration = ++generation;
-  disposeLifecycle?.();
-  disposeLifecycle = null;
-  if (estado.tab !== "trazabilidad" && repeticion?.state().mode === "playing") repeticion.pause();
+  // Cambiar de revisión descarta explorador y presentador; cambiar de pestaña
+  // desmonta el explorador y pausa, conservando la selección de la corrida.
   if (ultimaTraza !== estado.selectedRun) {
-    repeticion?.destroy();
-    repeticion = null;
+    destruirExplorador();
+    presentador?.pause("run");
+    presentador?.destroy();
+    presentador = null;
+    modeloTraza = null;
+    ultimoAvisoTraza = null;
     ultimaTraza = estado.selectedRun;
+  }
+  if (estado.tab !== "trazabilidad") {
+    destruirExplorador();
+    presentador?.pause("tab");
   }
   sincronizarPestanas(estado);
   dibujarCabecera(estado.selectedRun ? estado.view : null);
@@ -209,8 +250,11 @@ function dibujarRevision() {
   );
   const instantanea = recarga ? capturarInterfaz(revisionNodo) : null;
   const restaurar = () => restaurarInterfaz(revisionNodo, instantanea);
-  // Documentos conserva el DOM anterior hasta que el nuevo está listo.
-  const conservar = recarga && estado.tab === "documentos";
+  // Documentos conserva el DOM anterior hasta que el nuevo está listo; la
+  // Trazabilidad conserva su explorador y solo recibe el modelo nuevo.
+  const conservarExplorador = recarga && estado.tab === "trazabilidad" && explorador?.run === estado.selectedRun;
+  const conservar = (recarga && estado.tab === "documentos") || conservarExplorador;
+  if (!conservarExplorador) destruirExplorador();
   if (!conservar) revisionNodo.replaceChildren();
   if (!estado.selectedRun) {
     if (avisoRuta) revisionNodo.append(elemento("p", { clase: "estado estado--aviso", texto: avisoRuta }));
@@ -256,29 +300,52 @@ function dibujarRevision() {
       );
     });
   } else {
-    // La trazabilidad se interpreta antes de mostrarse.
-    revisionNodo.append(elemento("p", { clase: "estado", texto: "Cargando trazabilidad…" }));
-    void getTrace(estado.selectedRun)
+    // La trazabilidad se interpreta antes de mostrarse; una recarga de la
+    // misma corrida actualiza el explorador montado sin reconstruirlo.
+    const clave = estado.selectedRun;
+    if (!conservarExplorador) revisionNodo.append(elemento("p", { clase: "estado", texto: "Cargando trazabilidad…" }));
+    void getTrace(clave)
       .then((traza) => {
-        if (generation !== currentGeneration || store.getState().selectedRun !== estado.selectedRun) return;
-        if (!repeticion || ultimaTraza !== estado.selectedRun) {
-          ultimaTraza = estado.selectedRun;
-          repeticion?.destroy();
-          repeticion = createPlayback(traza.events ?? []);
-          enlazarRepeticion(repeticion);
+        if (generation !== currentGeneration || store.getState().selectedRun !== clave) return;
+        const modelo = buildTraceModel(traza);
+        let diff = null;
+        if (!presentador) {
+          // Corrida nueva: sin modelo anterior no hay «nuevos» que comparar.
+          presentador = crearPresentador(modelo, estado.view);
         } else {
-          repeticion.ingest(traza);
+          diff = reconcileTrace(modeloTraza, modelo);
+          presentador.update(modelo, contextoDeTraza(estado.view), diff);
         }
-        disposeLifecycle = renderLifecycle(revisionNodo, traza, repeticion);
+        modeloTraza = modelo;
+        if (explorador?.run === clave) {
+          explorador.api.update(modelo, diff);
+          return;
+        }
+        revisionNodo.replaceChildren();
+        explorador = {
+          run: clave,
+          api: mountExplorer(revisionNodo, {
+            model: modelo,
+            presenter: presentador,
+            runKey: clave,
+            onSelect: alSeleccionarHito,
+            inspector: shell.regions.inspector,
+            openDialog: shell.openDialog,
+          }),
+        };
         if (avisoHito) revisionNodo.prepend(elemento("p", { clase: "estado estado--aviso", texto: avisoHito }));
         avisoHito = null;
-        restaurar();
       })
       .catch((error) => {
         if (generation !== currentGeneration) return;
-        revisionNodo.replaceChildren(
-          elemento("p", { clase: "estado estado--error", texto: `No se pudo leer la trazabilidad: ${error.message}` }),
-        );
+        const mensaje = `No se pudo leer la trazabilidad: ${error.message}`;
+        // Una recarga fallida conserva el último modelo presentado.
+        if (explorador?.run === clave) {
+          shell.announce(mensaje);
+          return;
+        }
+        destruirExplorador();
+        revisionNodo.replaceChildren(elemento("p", { clase: "estado estado--error", texto: mensaje }));
       });
   }
   // Un destino que ninguna vista consumió (degradación a Archivo, otra
@@ -373,12 +440,12 @@ function suscribirHistorial() {
   });
 }
 
-/** Store → reproducción: un hito restaurado se selecciona sin reproducir. */
+/** Store → presentador: un hito restaurado (historial) se selecciona sin reproducir. */
 function suscribirHito() {
   store.subscribe((estado) => {
     const id = estado.selectedEventId;
-    if (!id || !repeticion || ultimaTraza !== estado.selectedRun) return;
-    if (repeticion.state().selectedEventId !== id && repeticion.event(id)) repeticion.seek(id);
+    if (!id || !presentador || !modeloTraza || ultimaTraza !== estado.selectedRun) return;
+    if (presentador.state().selectedId !== id && modeloTraza.byId.has(id)) presentador.select(id, "route");
   });
 }
 
@@ -389,8 +456,17 @@ function suscribirPreferencias() {
     previas = estado.prefs;
     applyPrefs(raizDocumento, estado.prefs);
     savePrefs(estado.prefs);
+    presentador?.setReducedMotion(prefersReducedMotion(estado.prefs));
     if (temaNodo && temaNodo.value !== estado.prefs.theme) temaNodo.value = estado.prefs.theme;
   });
+  // El movimiento reducido del sistema también puede cambiar con la página abierta.
+  try {
+    globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.addEventListener?.("change", () => {
+      presentador?.setReducedMotion(prefersReducedMotion(store.getState().prefs));
+    });
+  } catch {
+    // Sin `matchMedia` rige solo la preferencia local.
+  }
 }
 
 function aplicarRutaInicial() {
@@ -406,7 +482,7 @@ function aplicarRutaInicial() {
 
 window.addEventListener("popstate", () => {
   if (!historialListo) return;
-  if (repeticion?.state().mode === "playing") repeticion.pause();
+  presentador?.pause("history");
   const ruta = parseRoute(location.search);
   const estado = store.getState();
   sinHistorial(() => {
@@ -529,7 +605,7 @@ async function iniciar() {
     },
     (state) => store.dispatch({ type: "setConnection", state }),
   );
-  window.addEventListener("pagehide", () => { unsubscribe(); repeticion?.destroy(); disposeLifecycle?.(); }, { once: true });
+  window.addEventListener("pagehide", () => { unsubscribe(); destruirExplorador(); presentador?.destroy(); }, { once: true });
 
   dibujar();
 }

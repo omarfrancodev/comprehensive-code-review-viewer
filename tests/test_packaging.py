@@ -57,11 +57,12 @@ class WheelContentTests(unittest.TestCase):
     def test_incluye_los_recursos_estaticos(self) -> None:
         for recurso in ("index.html", "styles.css", "app.js", "api.js", "store.js",
                         "library.js", "profile.js", "findings.js", "validation.js",
-                        "documents.js", "markdown.js", "lifecycle.js", "playback.js",
+                        "documents.js", "markdown.js", "playback.js",
                         "prefs.js", "present.js", "route.js", "tokens.css",
                         "shell.js", "icons.js", "filters.js", "header.js",
                         "history.js", "archive.js", "estados.js", "trace-model.js",
-                        "presenter.js", "live-sync.js"):
+                        "presenter.js", "live-sync.js", "explorer.js", "actors.js",
+                        "timeline.js", "cards.js", "explorer.css"):
             with self.subTest(recurso=recurso):
                 self.assertIn(f"ccr_viewer/web/{recurso}", self.nombres)
 

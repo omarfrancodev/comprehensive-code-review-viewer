@@ -9,7 +9,7 @@ test("navegación y texto permanecen accesibles a 375, 768, 900, 1024 y 1440 px 
   await page.route("**/api/runs/*/trace", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ api_version: 1, data: TRAZA_SINTETICA }) }));
   await page.locator(".lista-revisiones button").first().click();
   await page.getByRole("tab", { name: "Trazabilidad" }).click();
-  await expect(page.locator(".hitos .hito")).toHaveCount(3);
+  await expect(page.locator('[data-part="cards"] li[data-event-id]')).toHaveCount(3);
   for (const width of [375, 768, 900, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     if (width === 375) {

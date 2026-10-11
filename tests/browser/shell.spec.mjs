@@ -196,16 +196,16 @@ test.describe("ruta local", () => {
     await openFixture(page);
     await abrirRevision(page);
     await pestana(page, "Trazabilidad").click();
-    await expect(page.locator(".hito--seleccionado")).toContainText("E000003");
+    await expect(page.locator('[data-part="cards"] li[aria-current="true"]')).toHaveAttribute("data-event-id", "E000003");
     const longitud = await page.evaluate(() => history.length);
     await page.getByRole("button", { name: "Evento anterior" }).click();
-    await expect(page.locator(".hito--seleccionado")).toContainText("E000002");
+    await expect(page.locator('[data-part="cards"] li[aria-current="true"]')).toHaveAttribute("data-event-id", "E000002");
     await expect.poll(() => busqueda(page)).toBe(`?run=${CLAVE}&tab=trazabilidad&event=E000002`);
     expect(await page.evaluate(() => history.length)).toBe(longitud);
 
     await page.reload();
     await expect(pestana(page, "Trazabilidad")).toHaveAttribute("aria-selected", "true");
-    await expect(page.locator(".hito--seleccionado")).toContainText("E000002");
+    await expect(page.locator('[data-part="cards"] li[aria-current="true"]')).toHaveAttribute("data-event-id", "E000002");
   });
 });
 
@@ -214,18 +214,18 @@ test("historial: Atrás restaura la pestaña anterior sin reproducir", async ({ 
   await openFixture(page);
   await abrirRevision(page);
   await pestana(page, "Trazabilidad").click();
-  await expect(page.locator(".hitos .hito")).toHaveCount(3);
-  await expect(page.locator(".hito--seleccionado")).toContainText("E000003");
+  await expect(page.locator('[data-part="cards"] li[data-event-id]')).toHaveCount(3);
+  await expect(page.locator('[data-part="cards"] li[aria-current="true"]')).toHaveAttribute("data-event-id", "E000003");
   await pestana(page, "Hallazgos").click();
   await expect.poll(() => busqueda(page)).toBe(`?run=${CLAVE}&tab=hallazgos`);
 
   await page.goBack();
   await expect(pestana(page, "Trazabilidad")).toHaveAttribute("aria-selected", "true");
-  await expect(page.locator(".hitos .hito")).toHaveCount(3);
+  await expect(page.locator('[data-part="cards"] li[data-event-id]')).toHaveCount(3);
   expect(busqueda(page)).toBe(`?run=${CLAVE}&tab=trazabilidad`);
   // Sin reproducción automática: la selección no avanza ni retrocede sola.
   await page.waitForTimeout(1200);
-  await expect(page.locator(".hito--seleccionado")).toContainText("E000003");
+  await expect(page.locator('[data-part="cards"] li[aria-current="true"]')).toHaveAttribute("data-event-id", "E000003");
 
   await page.goBack();
   await expect(pestana(page, "Resumen")).toHaveAttribute("aria-selected", "true");

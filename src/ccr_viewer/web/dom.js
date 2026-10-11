@@ -77,6 +77,57 @@ export function consumirDestino(contexto, dispatch, tab) {
 }
 
 /**
+ * Botón de acción. Inactivo se marca con `aria-disabled` (no `disabled`):
+ * conserva el foco del teclado y simplemente no actúa.
+ */
+export function botonAccion(texto, accion, { clase, atributos } = {}) {
+  const nodo = elemento("button", { clase, texto, atributos: { type: "button", ...atributos } });
+  nodo.addEventListener("click", (evento) => {
+    if (nodo.getAttribute("aria-disabled") === "true") return;
+    accion(evento);
+  });
+  return nodo;
+}
+
+export function fijarInactivo(nodo, inactivo) {
+  if (inactivo) nodo.setAttribute("aria-disabled", "true");
+  else nodo.removeAttribute("aria-disabled");
+}
+
+/**
+ * Deja en `padre` exactamente `nodos`, en ese orden. Solo mueve los que no
+ * ocupan ya su sitio: un nodo que no cambia de posición no se reinserta y
+ * conserva el foco; los sobrantes se retiran.
+ */
+export function reconciliarHijos(padre, nodos) {
+  let referencia = padre.firstChild;
+  for (const nodo of nodos) {
+    if (nodo === referencia) {
+      referencia = referencia.nextSibling;
+      continue;
+    }
+    padre.insertBefore(nodo, referencia);
+  }
+  while (referencia) {
+    const siguiente = referencia.nextSibling;
+    referencia.remove();
+    referencia = siguiente;
+  }
+}
+
+/**
+ * Desplaza solo `panel` (nunca la página) para que `nodo` quede visible.
+ * Devuelve el `scrollTop` resultante.
+ */
+export function mostrarEnPanel(panel, nodo, margen = 8) {
+  const caja = panel.getBoundingClientRect();
+  const destino = nodo.getBoundingClientRect();
+  if (destino.top < caja.top) panel.scrollTop += destino.top - caja.top - margen;
+  else if (destino.bottom > caja.bottom) panel.scrollTop += destino.bottom - caja.bottom + margen;
+  return panel.scrollTop;
+}
+
+/**
  * Lleva `nodo` a la vista una vez terminado el redibujo (la aplicación
  * restaura el desplazamiento al final del suyo) y, opcionalmente, le da el foco.
  */

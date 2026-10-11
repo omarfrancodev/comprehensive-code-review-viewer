@@ -51,7 +51,7 @@ test("la trazabilidad llega del servidor y verifica su cadena", async ({ page })
   await page.locator(".lista-revisiones button").first().click();
   await page.getByRole("tab", { name: "Trazabilidad" }).click();
   await expect(page.locator("#revision")).toContainText("cadena verificada");
-  await expect(page.locator(".hitos .hito").first()).toContainText("E000001");
+  await expect(page.locator('[data-part="cards"] li[data-event-id]').first()).toContainText("E000001");
 });
 
 test("el informe Markdown se renderiza sin peticiones remotas", async ({ page }) => {
