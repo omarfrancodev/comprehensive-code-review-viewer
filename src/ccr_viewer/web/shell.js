@@ -73,8 +73,13 @@ export function mountShell(doc = document) {
     regions.status.textContent = mensaje;
   }
 
-  /** Abre un `<dialog>` modal; Escape o «Cerrar» lo cierran y el foco vuelve al invocador. */
-  function openDialog({ title, build }) {
+  /**
+   * Abre un `<dialog>` modal; Escape o «Cerrar» lo cierran y el foco vuelve al
+   * invocador. Si el invocador ya no existe o no se pinta, `retorno()` (de
+   * quien abre el diálogo) indica el control estable más próximo; sin él, o si
+   * tampoco se pinta, el foco pasa a `#contenido`.
+   */
+  function openDialog({ title, build, retorno = null }) {
     const invocador = doc.activeElement;
     const dialogo = doc.createElement("dialog");
     dialogo.className = "dialogo";
@@ -111,8 +116,16 @@ export function mountShell(doc = document) {
     });
     dialogo.addEventListener("close", () => {
       dialogo.remove();
-      const destino = invocador?.isConnected && !sinPintar(invocador) ? invocador : porId("contenido");
-      destino?.focus?.();
+      const usable = (nodo) => (nodo?.isConnected && !sinPintar(nodo) ? nodo : null);
+      let destino = usable(invocador);
+      if (!destino && typeof retorno === "function") {
+        try {
+          destino = usable(retorno());
+        } catch {
+          destino = null;
+        }
+      }
+      (destino ?? porId("contenido"))?.focus?.();
     }, { once: true });
 
     build(cuerpo, close);

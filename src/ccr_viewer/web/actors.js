@@ -159,13 +159,15 @@ export function crearFranjaActores({ onActor, onVerTodos }) {
 /**
  * Lista paginada de 50 actores en un `<dialog>` del shell. Elegir uno cierra
  * el diálogo (el foco vuelve al invocador) y lo comunica con `onActor`.
- * Devuelve la función que cierra el diálogo.
+ * Si el invocador desaparece mientras está abierto, `retorno()` da el control
+ * estable que recibe el foco al cerrar. Devuelve la función que cierra el diálogo.
  */
-export function abrirListaActores(openDialog, { actores, etiquetas, actual, onActor }) {
+export function abrirListaActores(openDialog, { actores, etiquetas, actual, onActor, retorno = null }) {
   const total = actores.length;
   let pagina = 0;
   return openDialog({
     title: `Actores (${total})`,
+    retorno,
     build(cuerpo, cerrar) {
       const rango = elemento("p", { clase: "nota" });
       const lista = elemento("ul", { clase: "actores-dialogo" });

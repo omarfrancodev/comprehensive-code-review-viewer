@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { trazaSintetica } from "../js/generators.mjs";
-import { TRAZA_SINTETICA, openFixture } from "./support.mjs";
+import { TRAZA_SINTETICA, installFakeEventSource, openFixture } from "./support.mjs";
 
 /**
  * Explorador de trazabilidad: franja de actores, timeline por ventanas,
@@ -375,6 +375,30 @@ test.describe("explorador de trazabilidad", () => {
     await pulsarSinFoco(page, "Pausar");
     expect(await regionDelFoco(page)).toBe("actors");
     expect(await page.evaluate(() => document.activeElement?.textContent)).toContain("agente-7");
+  });
+
+  test("lista de actores: si «Ver todos» deja de pintarse con el diálogo abierto, el foco vuelve a la franja", async ({ page }) => {
+    // Regresión (Tarea 13, AX-01): el foco caía en `main#contenido`, que no es
+    // un control y no muestra anillo de foco.
+    const fuente = { traza: trazaSintetica(30, { actors: 12 }) };
+    await installFakeEventSource(page);
+    await page.route("**/api/runs/*/trace", (ruta) => responder(fuente.traza)(ruta));
+    await openFixture(page);
+    await page.locator(".lista-revisiones button").first().click();
+    await page.getByRole("tab", { name: "Trazabilidad" }).click();
+    const verTodos = page.getByRole("button", { name: "Ver todos los actores" });
+    await verTodos.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("dialog", { name: /Actores/ })).toBeVisible();
+    fuente.traza = trazaSintetica(30, { actors: 3 });
+    await page.evaluate(() => window.__ccr.emitNotice({ kind: "run_changed", run_key: null, cursor: 1, fingerprint: null }));
+    await expect(actores(page)).toHaveCount(3);
+    await expect(verTodos).toBeHidden();
+    await page.keyboard.press("Escape");
+    await expect(page.locator("dialog")).toHaveCount(0);
+    // El actor del hito seleccionado (E000030 → agente-2) recibe el foco.
+    await expect(page.locator('[data-part="actors"] button[aria-current="true"]')).toBeFocused();
+    await expect(page.locator('[data-part="actors"] button[aria-current="true"]')).toContainText("agente-2");
   });
 
   test("con movimiento reducido las tarjetas quedan completas", async ({ page }) => {

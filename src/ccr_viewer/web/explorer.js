@@ -434,6 +434,9 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
       etiquetas,
       actual: claveActorDe(estado().selectedId),
       onActor: alElegirActor,
+      // Si «Ver todos» dejó de pintarse (menos actores tras una recarga), el
+      // foco vuelve al actor del hito seleccionado o al primero de la franja.
+      retorno: () => (destruido ? null : franja.respaldoDeFoco(claveActorDe(estado().selectedId))),
     });
   }
 
