@@ -275,6 +275,8 @@ test.describe("LV-02 último hito activo", () => {
     await mostrarNuevos(page).click();
     await expect(tarjeta(page, "E000004")).toHaveAttribute("data-active-source", "true");
     await expect(tarjeta(page, "E000004")).toHaveAttribute("data-state", "complete");
+    // Una sola tarjeta lleva la carga activa.
+    await expect(page.locator('[data-part="cards"] [data-active-source="true"]')).toHaveCount(1);
     await expect(actual(page)).toHaveAttribute("data-event-id", "E000002");
   });
 

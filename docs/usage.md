@@ -298,7 +298,10 @@ vista.
 
 Mientras el cierre sea `processing`, el último hito por secuencia lleva el
 indicador «Último hito activo · revisión en procesamiento», aunque haya otro
-seleccionado; el marcador correspondiente de la línea de tiempo lo repite. Es un
+seleccionado: siempre en su marcador de la línea de tiempo y, cuando ya está
+presentado, también en su tarjeta (una sola tarjeta a la vez). Si aún no está
+presentado (o no está en la página o el filtro actuales), los controles muestran
+«Último activo: E…» con un acceso explícito a él. Es un
 estado de la revisión, no prueba que un agente esté ejecutando algo en ese
 momento. Si todavía no hay hitos se muestra «Esperando el primer registro», sin
 tarjetas ni actores.
@@ -307,8 +310,10 @@ tarjetas ni actores.
   nuevo se añade al final y se presenta con el revelado; en una ráfaga sólo se
   anima el más reciente y los anteriores aparecen completos.
 - Al **pausar**, la recepción continúa: los IDs nuevos se acumulan en «N nuevos
-  sin presentar» (ya en la línea de tiempo y en la búsqueda, todavía no en la
-  lista de tarjetas). Interactuar con el inspector (por ejemplo, abrir el JSON
+  sin presentar». Están ya en la línea de tiempo, en el contador y en la
+  búsqueda, pero la lista de tarjetas muestra sólo el prefijo presentado: no los
+  incorpora hasta «Mostrar nuevos» o «Reanudar En Vivo». El hito seleccionado
+  siempre está presentado. Interactuar con el inspector (por ejemplo, abrir el JSON
   original o enfocar un botón de copia), seleccionar un hito a mano, escribir en
   la búsqueda o desactivar «Seguir recorrido» tiene el mismo efecto: el hito, el foco y el desplazamiento
   se conservan. «Mostrar nuevos» los incorpora sin desplazar ni reanudar, y

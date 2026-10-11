@@ -11,8 +11,9 @@ visual).
 
 ## Árbol verificado
 
-- Rama `feat/interfaz-premium`, commit `314e669`
-  (`314e6692c0ea9851c36fca24b2b7a310306a796b`). Es el árbol que se ejecutó.
+- Rama `feat/interfaz-premium`: código del commit `e4834eb`
+  (`e4834ebb5d493e25fb14f94b7613f113c22fd575`) más los cambios de pruebas y
+  documentación del commit que actualiza este informe. Es el árbol que se ejecutó.
 - Sobre `7edcaa4` (tareas 1–14) contiene las correcciones de producto de la
   revisión final: `4f8398e` (interactuar con el inspector o seleccionar a mano
   suspende el seguimiento, §6.3 y §8.2), `2cdab5f` (se muestra el repositorio
@@ -22,8 +23,11 @@ visual).
   selección hecha durante una recarga), `63a10a5` (buscar pausa el recorrido y
   suspende el seguimiento), `c05adbf` (la lista de tarjetas se limita al prefijo
   presentado) y `314e669` (Atrás a una entrada de Trazabilidad sin `event`
-  restaura el hito por defecto). El commit que actualiza este informe solo
-  cambia documentación.
+  restaura el hito por defecto), y las dos de la revisión de esas correcciones:
+  `cc792bb` (el hito seleccionado siempre está presentado, también al llegar los
+  primeros hitos de una traza vacía) y `e4834eb` (restaurar el hito por defecto
+  conserva la cola de pendientes). El commit que actualiza este informe cambia
+  documentación y una aserción de `live-ui.spec.mjs`.
 - Las suites se ejecutaron con el árbol de trabajo limpio en ese commit (más este
   documento aún sin confirmar, que ninguna prueba lee). Las de navegador usaron
   el servidor estático de pruebas en otro puerto (`CCR_STATIC_PORT=8791` y
@@ -48,11 +52,11 @@ Todos desde la raíz del worktree, con `PYTHONPATH=src` para Python.
 
 | Comando | Resultado de esta ejecución |
 | --- | --- |
-| `python -m unittest discover -s tests -p "test_*.py"` | **267 pruebas, OK**, 0 fallos, 0 errores, 0 omitidas (63.0 s), una ejecución |
-| `node --test "tests/js/*.test.mjs"` | **420 pruebas en 59 suites: 420 aprobadas**, 0 fallos, 0 omitidas |
+| `python -m unittest discover -s tests -p "test_*.py"` | **267 pruebas, OK**, 0 fallos, 0 errores, 0 omitidas (66.5 s), una ejecución |
+| `node --test "tests/js/*.test.mjs"` | **421 pruebas en 59 suites: 421 aprobadas**, 0 fallos, 0 omitidas |
 | `node tools/vendor.mjs` y `git diff --exit-code src/ccr_viewer/web/vendor` | **No repetido en esta ejecución** (las correcciones no tocan `vendor/`); en la anterior (`2cdab5f`), salida 0 en ambos |
-| `npx playwright test --project=chromium` | **263 aprobadas**, 0 fallos, 0 omitidas (6.2 min) |
-| `npx playwright test --project=firefox` | **259 aprobadas, 4 omitidas**, 0 fallos (6.9 min). Una ejecución anterior sobre el mismo commit tuvo 1 fallo en `readonly.spec.mjs` «RO-01: revisión en procesamiento…» (la vista del Archivo, leída durante una escritura del productor real, no mostró «Integridad:» en 15 s); la prueba pasó 3 de 3 veces aislada y la suite completa se repitió sin fallos |
+| `npx playwright test --project=chromium` | **265 aprobadas**, 0 fallos, 0 omitidas (6.3 min) |
+| `npx playwright test --project=firefox` | **261 aprobadas, 4 omitidas**, 0 fallos (7.1 min). En la ejecución previa a la revisión de las correcciones (`314e669`) una primera pasada tuvo 1 fallo en `readonly.spec.mjs` «RO-01: revisión en procesamiento…» (la vista del Archivo, leída durante una escritura del productor real, no mostró «Integridad:» en 15 s); la prueba pasó 3 de 3 veces aislada y la suite completa se repitió sin fallos |
 | `python -m pip wheel . --no-deps --wheel-dir <temporal>` | **No repetido en esta ejecución.** En la ejecución anterior (`78168ff`) se construyó `comprehensive_code_review_viewer-0.1.0-py3-none-any.whl`; ver «Hallazgo de empaquetado». La construcción desde una copia limpia la repite `tests/test_packaging.py`, que pasó en la suite Python de esta ejecución |
 
 Las 4 pruebas omitidas en Firefox son las que dependen de Chromium:
@@ -62,7 +66,7 @@ copia el texto completo», `inspector.spec.mjs` «copiar usa el valor completo»
 
 Chromium por archivo de especificación: a11y 6, acceptance 7, document-content 2,
 explorer 23, explorer-playback 20, hostile 2, inspector 26, library 33, live-real 3,
-live-transition 1, live-ui 32, markdown 8, perf 1, profile 8, readonly 2, shell 16,
+live-transition 1, live-ui 34, markdown 8, perf 1, profile 8, readonly 2, shell 16,
 views 39, visual 26, wiring 8.
 
 Pruebas de empaquetado de `tests/test_packaging.py` (11, todas OK):
@@ -93,7 +97,7 @@ Las pruebas de navegador usan datos sintéticos; las que interceptan la API
 | TR-02 | `tests/browser/explorer.spec.mjs`: «0 eventos», «1 evento», «50 hitos», «51 hitos», «TR-02: 10 000 hitos y 60 actores con render acotado», «las bases temporales se distinguen sin depender del color» (incluido el marcador «sin hora») y «la cadena y las bases se rotulan sin fabricar duración»; `tests/browser/inspector.spec.mjs` («el orden temporal declarado es un dato en un detalle, no una lista paralela»: horas fuera de secuencia, `E000003 → E000002 → E000001`; «sin relaciones, evidencia, actor ni hora: un mensaje propio para cada caso»); `tests/js/trace-model.test.mjs` («ventanas», «cadena, tiempos y relaciones» con «conserva horas iguales, respaldos de secuencia y el orden temporal del backend», «reconcileTrace», «trazaSintetica»); `tests/js/presenter.test.mjs` («orden único del modelo con secuencias no confiables»); servidor: `tests/test_trace.py` (`test_canonical_recording_order_is_always_available`, `test_sequence_fallback_is_diagnosed_and_ordered_last`, `test_basis_labels_distinguish_occurrence_from_recording_fallback`). `tests/js/wiring.test.mjs` («el orden temporal intercala instantes efectivos de distintas bases») ejercita `playback.temporalOrder()`, que el producto no usa, y **no** es evidencia de TR-02 | Verificado |
 | TR-03 | `tests/browser/explorer-playback.spec.mjs` (sin autoplay, Reiniciar, «Reiniciar: la lista solo muestra el prefijo presentado y la búsqueda alcanza el resto», 1×/2×, etapas sin salto de altura, pausa que congela y reanuda, «Mostrar tarjeta completa», foco con acciones inertes, movimiento reducido del sistema y de la UI, pausa por contexto, duraciones); `tests/js/presenter.test.mjs` («reproducción y revelado»); `tests/js/playback.test.mjs` | Verificado |
 | LV-01 | `tests/browser/live-ui.spec.mjs` «LV-01 disponibilidad por cierre» (cada estado distinto de `processing` deshabilita con la conexión abierta; `processing` habilita); `tests/js/presenter.test.mjs` («disponibilidad de En Vivo») | Verificado |
-| LV-02 | `tests/browser/live-ui.spec.mjs` «LV-02 último hito activo» (carga en el último por secuencia con otro seleccionado, persiste tras el revelado y se mueve con la llegada, cesa al salir de `processing`, «Esperando el primer registro», último fuera de página o filtro) | Verificado |
+| LV-02 | `tests/browser/live-ui.spec.mjs` «LV-02 último hito activo» (carga en el último por secuencia con otro seleccionado, persiste tras el revelado y se mueve con la llegada, cesa al salir de `processing`, «Esperando el primer registro», último fuera de página o filtro; último aún no presentado: carga en su marcador y «Último activo: E…», y tras «Mostrar nuevos» una sola tarjeta con la carga; primeros hitos de una traza vacía con el seleccionado presentado; Atrás a una entrada sin `event` conserva la cola). La lista de tarjetas muestra el prefijo presentado: las llegadas pendientes quedan en la línea de tiempo, el contador y la búsqueda hasta «Mostrar nuevos» (§8.2) | Verificado |
 | LV-03 | Servidor real: `tests/browser/live-real.spec.mjs` (3 pruebas: `add_check` por SSE, ráfaga, cierre real, `transient_retention`, cierre y reapertura del canal sin repetir). API interceptada: `tests/browser/live-ui.spec.mjs` («lectura en actualización», «prefijo reducido: pausa y aviso», «mismo ID modificado»). `tests/js/live-sync.test.mjs`, `tests/js/live-reload.test.mjs`, `tests/js/presenter.test.mjs` («recepción en vivo»). Servidor: `tests/test_live.py` (reanudación por cursor, `resync`, cola llena), `tests/test_readonly.py` (`FixtureProducerTests`) | Verificado, salvo la reconexión nativa con `Last-Event-ID` en un navegador: **no verificado** |
 | LV-04 | `tests/browser/live-ui.spec.mjs` «LV-04 pausa y cola de lectura» (pausa conserva ID, foco y scroll; buscar no borra el contador; «Mostrar nuevos» no reanuda; cierre durante pausa conserva pendientes; desconexión con icono estático; interactuar con el inspector produce la misma lectura: «abrir «JSON original» en seguimiento es lectura: la llegada va a la cola y el inspector conserva hito, JSON y foco; «Reanudar En Vivo» retoma» y «enfocar «Copiar JSON» en seguimiento es lectura: el foco y el hito se conservan; «Seguir recorrido» retoma»), «error de lectura», «anuncios: un mensaje por ráfaga»; selección manual en replay: `tests/browser/explorer-playback.spec.mjs` «seguir recorrido: una selección manual o leer en el inspector lo desactiva y el botón lo retoma»; escribir en la búsqueda también es lectura: «escribir en la búsqueda en seguimiento es lectura: la llegada queda en la cola y la selección se conserva» (`live-ui.spec.mjs`) y «escribir en la búsqueda durante «Reproducir» pausa el recorrido y conserva la selección» (`explorer-playback.spec.mjs`). Las tres pruebas de la interacción con el inspector pasaron en Chromium y Firefox en esta ejecución | Verificado |
 | RF-01 | `tests/browser/inspector.spec.mjs` («relaciones»: local resuelta, hallazgo y check, entre corridas con retorno, `dangling`/`ambiguous` sin botón, ciclo etiquetado; «evidencia»: coincidencia exacta por clave opaca, hostil inerte, fallo del inventario); `tests/js/relations.test.mjs` | Verificado |
