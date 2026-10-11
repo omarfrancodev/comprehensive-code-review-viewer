@@ -11,14 +11,15 @@ visual).
 
 ## Árbol verificado
 
-- Rama `feat/interfaz-premium`, base de producto `d9670b0`
-  (`d9670b00c094bcd7e62e127b2fedf7751370ff73`).
-- Commit `78168ff` (`78168ffdbd8fb3703578ac22e5b9019fabc87938`): `d9670b0` más el
-  cambio de `tests/test_packaging.py` de esta tarea. Es el árbol que se ejecutó;
-  no hay cambios de código de producto entre `d9670b0` y `78168ff`. Los
-  commits posteriores de esta tarea solo añaden documentación.
-- Las suites se ejecutaron con el árbol de trabajo en ese estado (más los
-  documentos aún sin confirmar, que ninguna prueba lee).
+- Rama `feat/interfaz-premium`, commit `2cdab5f`
+  (`2cdab5fa74990967ec498c9297fe3855e71559c3`). Es el árbol que se ejecutó.
+- Sobre `7edcaa4` (tareas 1–14) contiene las dos correcciones de producto de la
+  revisión final: `4f8398e` (interactuar con el inspector o seleccionar a mano
+  suspende el seguimiento, §6.3 y §8.2) y `2cdab5f` (se muestra el repositorio
+  declarado y no la identidad normalizada). El commit que actualiza este informe
+  solo cambia documentación.
+- Las suites se ejecutaron con el árbol de trabajo limpio en ese commit (más este
+  documento aún sin confirmar, que ninguna prueba lee).
 
 ## Entorno
 
@@ -38,12 +39,12 @@ Todos desde la raíz del worktree, con `PYTHONPATH=src` para Python.
 
 | Comando | Resultado de esta ejecución |
 | --- | --- |
-| `python -m unittest discover -s tests -p "test_*.py" -v` | **267 pruebas, OK**, 0 fallos, 0 errores, 0 omitidas (61.8 s). Repetido dos veces más con `-v` capturado: 267 OK (60.6 s y 60.9 s) |
-| `node --test "tests/js/*.test.mjs"` | **414 pruebas en 59 suites: 414 aprobadas**, 0 fallos, 0 omitidas |
+| `python -m unittest discover -s tests -p "test_*.py"` | **267 pruebas, OK**, 0 fallos, 0 errores, 0 omitidas (65.0 s), una ejecución |
+| `node --test "tests/js/*.test.mjs"` | **417 pruebas en 59 suites: 417 aprobadas**, 0 fallos, 0 omitidas |
 | `node tools/vendor.mjs` y `git diff --exit-code src/ccr_viewer/web/vendor` | Salida 0 en ambos: sin diferencias |
-| `npx playwright test --project=chromium` | **253 aprobadas**, 0 fallos, 0 omitidas (5.7 min) |
-| `npx playwright test --project=firefox` | **249 aprobadas, 4 omitidas**, 0 fallos (6.2 min) |
-| `python -m pip wheel . --no-deps --wheel-dir <temporal>` | Wheel `comprehensive_code_review_viewer-0.1.0-py3-none-any.whl` construida; ver «Hallazgo de empaquetado» |
+| `npx playwright test --project=chromium` | **257 aprobadas**, 0 fallos, 0 omitidas (6.0 min) |
+| `npx playwright test --project=firefox` | **253 aprobadas, 4 omitidas**, 0 fallos (6.6 min) |
+| `python -m pip wheel . --no-deps --wheel-dir <temporal>` | **No repetido en esta ejecución.** En la ejecución anterior (`78168ff`) se construyó `comprehensive_code_review_viewer-0.1.0-py3-none-any.whl`; ver «Hallazgo de empaquetado». La construcción desde una copia limpia la repite `tests/test_packaging.py`, que pasó en la suite Python de esta ejecución |
 
 Las 4 pruebas omitidas en Firefox son las que dependen de Chromium:
 `explorer-playback.spec.mjs` «copiar el resumen durante el revelado copia el texto
@@ -51,15 +52,16 @@ completo», `inspector.spec.mjs` «copiar usa el valor completo», `views.spec.m
 «copiar ID copia el valor completo» y `perf.spec.mjs`.
 
 Chromium por archivo de especificación: a11y 6, acceptance 7, document-content 2,
-explorer 23, explorer-playback 17, hostile 2, inspector 26, library 32, live-real 3,
-live-transition 1, live-ui 29, markdown 8, perf 1, profile 8, readonly 2, shell 15,
+explorer 23, explorer-playback 18, hostile 2, inspector 26, library 33, live-real 3,
+live-transition 1, live-ui 31, markdown 8, perf 1, profile 8, readonly 2, shell 15,
 views 37, visual 26, wiring 8.
 
 Pruebas de empaquetado de `tests/test_packaging.py` (11, todas OK):
-las seis de contenido de la wheel (módulos Python, 42 recursos estáticos
-exactamente iguales a las claves de `STATIC_RESOURCES`, recursos y licencias
-vendor, contratos, exclusión de árboles de desarrollo, inventario vendor frente a
-bytes), `METADATA` sin `Requires-Dist`, y tres de ejecución instalada:
+las siete de contenido de la wheel (módulos Python, 42 recursos estáticos
+exactamente iguales a las claves de `STATIC_RESOURCES`, recursos vendor con su
+inventario, licencias de terceros, contratos, exclusión de árboles de desarrollo e
+inventario vendor frente a bytes), `METADATA` sin `Requires-Dist`, y tres de
+ejecución instalada:
 arranque con `python -I -m ccr_viewer` fuera del repositorio, servicio de **cada**
 recurso de `STATIC_RESOURCES` por `/assets/<clave>` con su `Content-Type`, la
 `Content-Security-Policy` igual a `CONTENT_SECURITY_POLICY` y `nosniff`, y el
@@ -76,15 +78,15 @@ Las pruebas de navegador usan datos sintéticos; las que interceptan la API
 
 | ID | Evidencia | Estado |
 | --- | --- | --- |
-| UI-01 | `tests/browser/library.spec.mjs`: «UI-01 lista y paginación» (1000 corridas con 50 filas, total y página, y total filtrado; títulos coincidentes distinguibles por ID; URL larga sin desbordar), «UI-01 filtros» (selector Todas/Abiertas/Cerradas, fechas inválidas, borradores, chips, enums con valor libre, sugerencias rotuladas), «UI-01 búsqueda» (250 ms, Enter, foco y caret tras recarga), «UI-01 estados, selección y recarga». Apoyo: `tests/js/filters.test.mjs`, `tests/js/present.test.mjs` | Verificado con API interceptada; no con 1000 corridas reales en disco |
+| UI-01 | `tests/browser/library.spec.mjs`: «UI-01 lista y paginación» (1000 corridas con 50 filas, total y página, y total filtrado; títulos coincidentes distinguibles por ID; URL larga sin desbordar; repositorio declarado en fila, detalle, cabecera y Resumen con agrupación por identidad normalizada), «UI-01 filtros» (selector Todas/Abiertas/Cerradas, fechas inválidas, borradores, chips, enums con valor libre, sugerencias rotuladas), «UI-01 búsqueda» (250 ms, Enter, foco y caret tras recarga), «UI-01 estados, selección y recarga». Apoyo: `tests/js/filters.test.mjs`, `tests/js/present.test.mjs` | Verificado con API interceptada; no con 1000 corridas reales en disco |
 | UI-02 | `tests/browser/views.spec.mjs` (cabecera con cierre, veredicto, integridad y checks separados; Resumen, Seguimiento, Archivo, Hallazgos, Validación, Documentos; «residuos vacíos son ausencia declarada y el JSON original queda desplegable»), `tests/browser/profile.spec.mjs` («responsable y autores del cambio aparecen por separado», «la validación no convierte ausencia en aprobado»), `tests/browser/wiring.spec.mjs` | Verificado en estructura y conservación de originales; la consistencia visual entre las siete vistas no tuvo inspección manual propia (ver «Inspección visual») |
 | TR-01 | `tests/browser/explorer.spec.mjs`: «tarjetas en secuencia, actores solo en franja», «TR-01: actor, punto y tarjeta convergen en el mismo ID e inspector», «seleccionar no roba el foco ni lo lleva al inspector»; `tests/js/trace-model.test.mjs` («buildTraceModel: actores») | Verificado |
-| TR-02 | `tests/browser/explorer.spec.mjs`: «0 eventos», «1 evento», «50 hitos», «51 hitos», «TR-02: 10 000 hitos y 60 actores con render acotado», bases temporales y cadena; `tests/js/trace-model.test.mjs` («ventanas», «cadena, tiempos y relaciones», «reconcileTrace», «trazaSintetica»); `tests/js/presenter.test.mjs` («orden único del modelo con secuencias no confiables»); `tests/js/views.test.mjs` («el orden temporal intercala instantes efectivos de distintas bases») | Verificado |
+| TR-02 | `tests/browser/explorer.spec.mjs`: «0 eventos», «1 evento», «50 hitos», «51 hitos», «TR-02: 10 000 hitos y 60 actores con render acotado», «las bases temporales se distinguen sin depender del color» (incluido el marcador «sin hora») y «la cadena y las bases se rotulan sin fabricar duración»; `tests/browser/inspector.spec.mjs` («el orden temporal declarado es un dato en un detalle, no una lista paralela»: horas fuera de secuencia, `E000003 → E000002 → E000001`; «sin relaciones, evidencia, actor ni hora: un mensaje propio para cada caso»); `tests/js/trace-model.test.mjs` («ventanas», «cadena, tiempos y relaciones» con «conserva horas iguales, respaldos de secuencia y el orden temporal del backend», «reconcileTrace», «trazaSintetica»); `tests/js/presenter.test.mjs` («orden único del modelo con secuencias no confiables»); servidor: `tests/test_trace.py` (`test_canonical_recording_order_is_always_available`, `test_sequence_fallback_is_diagnosed_and_ordered_last`, `test_basis_labels_distinguish_occurrence_from_recording_fallback`). `tests/js/wiring.test.mjs` («el orden temporal intercala instantes efectivos de distintas bases») ejercita `playback.temporalOrder()`, que el producto no usa, y **no** es evidencia de TR-02 | Verificado |
 | TR-03 | `tests/browser/explorer-playback.spec.mjs` (sin autoplay, Reiniciar, 1×/2×, etapas sin salto de altura, pausa que congela y reanuda, «Mostrar tarjeta completa», foco con acciones inertes, movimiento reducido del sistema y de la UI, pausa por contexto, duraciones); `tests/js/presenter.test.mjs` («reproducción y revelado»); `tests/js/playback.test.mjs` | Verificado |
 | LV-01 | `tests/browser/live-ui.spec.mjs` «LV-01 disponibilidad por cierre» (cada estado distinto de `processing` deshabilita con la conexión abierta; `processing` habilita); `tests/js/presenter.test.mjs` («disponibilidad de En Vivo») | Verificado |
 | LV-02 | `tests/browser/live-ui.spec.mjs` «LV-02 último hito activo» (carga en el último por secuencia con otro seleccionado, persiste tras el revelado y se mueve con la llegada, cesa al salir de `processing`, «Esperando el primer registro», último fuera de página o filtro) | Verificado |
 | LV-03 | Servidor real: `tests/browser/live-real.spec.mjs` (3 pruebas: `add_check` por SSE, ráfaga, cierre real, `transient_retention`, cierre y reapertura del canal sin repetir). API interceptada: `tests/browser/live-ui.spec.mjs` («lectura en actualización», «prefijo reducido: pausa y aviso», «mismo ID modificado»). `tests/js/live-sync.test.mjs`, `tests/js/live-reload.test.mjs`, `tests/js/presenter.test.mjs` («recepción en vivo»). Servidor: `tests/test_live.py` (reanudación por cursor, `resync`, cola llena), `tests/test_readonly.py` (`FixtureProducerTests`) | Verificado, salvo la reconexión nativa con `Last-Event-ID` en un navegador: **no verificado** |
-| LV-04 | `tests/browser/live-ui.spec.mjs` «LV-04 pausa y cola de lectura» (pausa conserva ID, foco y scroll; buscar no borra el contador; «Mostrar nuevos» no reanuda; cierre durante pausa conserva pendientes; desconexión con icono estático), «error de lectura», «anuncios: un mensaje por ráfaga» | Verificado |
+| LV-04 | `tests/browser/live-ui.spec.mjs` «LV-04 pausa y cola de lectura» (pausa conserva ID, foco y scroll; buscar no borra el contador; «Mostrar nuevos» no reanuda; cierre durante pausa conserva pendientes; desconexión con icono estático; interactuar con el inspector produce la misma lectura: «abrir «JSON original» en seguimiento es lectura: la llegada va a la cola y el inspector conserva hito, JSON y foco; «Reanudar En Vivo» retoma» y «enfocar «Copiar JSON» en seguimiento es lectura: el foco y el hito se conservan; «Seguir recorrido» retoma»), «error de lectura», «anuncios: un mensaje por ráfaga»; selección manual en replay: `tests/browser/explorer-playback.spec.mjs` «seguir recorrido: una selección manual o leer en el inspector lo desactiva y el botón lo retoma». Las tres pruebas de la interacción con el inspector pasaron en Chromium y Firefox en esta ejecución | Verificado |
 | RF-01 | `tests/browser/inspector.spec.mjs` («relaciones»: local resuelta, hallazgo y check, entre corridas con retorno, `dangling`/`ambiguous` sin botón, ciclo etiquetado; «evidencia»: coincidencia exacta por clave opaca, hostil inerte, fallo del inventario); `tests/js/relations.test.mjs` | Verificado |
 | AX-01 | `tests/browser/a11y.spec.mjs` (flujo completo con teclado en servidor real, región polite sin repeticiones, diálogos con foco y retorno, foco visible ≥3:1 en claro y oscuro); `tests/browser/shell.spec.mjs` («tabs»); `tests/js/contrast.test.mjs`; `explorer-playback.spec.mjs` (movimiento reducido) | Verificado por roles, foco, anuncios y contraste calculado; **no verificado** con un lector de pantalla real |
 | VS-01 | `tests/browser/visual.spec.mjs`: «VS-01: matriz 320–1920 px × claro/oscuro × cómoda/compacta» (sin scroll horizontal, controles visibles y objetivos ≥24×24 CSS px) y 24 pruebas de captura de estados | Parcial: zoom del 200 % y 400 % aproximado con 640 y 320 px de ancho (**zoom real no verificado**); 1920 y 1024 px forman parte de la matriz pero solo se inspeccionó manualmente un subconjunto de capturas |
@@ -105,7 +107,7 @@ y no una medición de INP.** Objetivo de la spec: p95 < 200 ms.
 | Origen | p50 | p95 | máx. | Carga inicial | `/trace` (8.4 MB) |
 | --- | --- | --- | --- | --- | --- |
 | Implementador de la tarea 13, tres ejecuciones | 28.8, 29.8, 29.5 ms | 45.1, 44.2, 48.4 ms | 46.6, 44.5, 48.5 ms | 387 ms | 100 ms |
-| Esta verificación, una ejecución | 29.6 ms | 46.9 ms | 46.9 ms | 325 ms | 88 ms |
+| Esta verificación, una ejecución | 28.9 ms | 48.8 ms | 49.1 ms | 335 ms | 91 ms |
 
 Máquina: AMD Ryzen 7 6800H, 16 hilos, 23 GiB, win32 x64, Node v24.15.0,
 Playwright 1.64.0, Chromium 156.0.8078.4. Las cifras de la tarea 13 son las que
@@ -173,11 +175,12 @@ publicación en este árbol.
 - **Fallo único de Python en la tarea 13.** Durante la tarea 13 una ejecución de la
   suite Python terminó con un fallo cuyo nombre no se capturó y que no se
   reprodujo en cuatro ejecuciones posteriores. En esta verificación se ejecutó la
-  suite completa tres veces con `-v` capturado: las tres terminaron con 267
-  pruebas OK, sin fallos ni errores. No se puede afirmar que esté resuelto: no se
-  identificó qué prueba falló.
-- **«Copiar resumen» por tarjeta** es una acción provisional (decisión de la
-  tarea 13): copia el resumen declarado y convive con los botones de copia del
+  suite completa tres veces sobre `78168ff` y una vez sobre `2cdab5f`: todas
+  terminaron con 267 pruebas OK, sin fallos ni errores. No se puede afirmar que
+  esté resuelto: no se identificó qué prueba falló.
+- **«Copiar resumen» por tarjeta** es una acción provisional añadida en la
+  tarea 10 (aceptada como interina; su permanencia es una decisión pendiente del
+  usuario): copia el resumen declarado y convive con los botones de copia del
   inspector.
 - **Rótulos de carga.** El indicador de carga tiene variantes de etiqueta estática
   según el motivo (sin conexión, datos no actualizados, esperando recarga),
