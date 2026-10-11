@@ -484,8 +484,11 @@ function dibujarRevision() {
     const panel = elemento("div");
     void renderDocuments(panel, estado.view, undefined, { memoria: memoriaDe(estado.selectedRun) }).then(() => {
       if (generation !== currentGeneration) return;
+      // El panel visible siguió en uso durante la espera: su foco, scroll y
+      // `<details>` se capturan al instalar, no al empezar la recarga.
+      const alInstalar = recarga ? capturarInterfaz(revisionNodo) : null;
       revisionNodo.replaceChildren(panel);
-      restaurar();
+      restaurarInterfaz(revisionNodo, alInstalar);
     }).catch((error) => {
       if (generation !== currentGeneration) return;
       revisionNodo.replaceChildren(

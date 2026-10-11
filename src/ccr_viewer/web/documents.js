@@ -190,9 +190,16 @@ export async function renderDocuments(contenedor, view, api = { getFiles, getPre
     // Se restaura el archivo elegido; si no, el informe. Sin informe se declara
     // y el resto del inventario sigue a mano.
     const informe = archivos.find((archivo) => archivo.name === "informe.md") ?? archivos.find(esMarkdown);
-    const inicial = archivos.find((archivo) => recuerdo.clave !== undefined && archivo.key === recuerdo.clave) ?? informe;
+    const recordado = () => archivos.find((archivo) => recuerdo.clave !== undefined && archivo.key === recuerdo.clave);
+    const inicial = recordado() ?? informe;
     if (inicial) {
       await seleccionar(inicial);
+      // Recarga en vivo: este panel se prepara aparte mientras el visible sigue
+      // en uso. Si allí se eligió otro archivo durante la espera (la memoria es
+      // común), esa elección prevalece antes de instalar este panel.
+      for (let elegido = recordado(); elegido && elegido !== seleccionado; elegido = recordado()) {
+        await seleccionar(elegido);
+      }
     } else {
       detalle.append(
         elemento("p", {

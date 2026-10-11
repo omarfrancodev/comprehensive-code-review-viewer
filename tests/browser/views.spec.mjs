@@ -795,6 +795,46 @@ test.describe("Recarga en vivo de la misma revisión", () => {
     expect(await page.evaluate(() => window.__cargando)).toBe(false);
   });
 
+  test("Documentos conserva el archivo y el foco elegidos mientras la recarga estaba pendiente", async ({ page }) => {
+    await instalarAvisos(page);
+    await abrir(page);
+    const informe = "1".repeat(32);
+    const otro = "2".repeat(32);
+    await page.route("**/api/runs/*/files", (ruta) => responder(ruta, [
+      { key: informe, name: "informe.md", relative_path: "informe.md", media_kind: "markdown", bytes: 20, available: true },
+      { key: otro, name: "otro.md", relative_path: "otro.md", media_kind: "markdown", bytes: 10, available: true },
+    ]));
+    await page.route(`**/api/runs/*/files/${otro}`, (ruta) =>
+      responder(ruta, { text: "# Otro documento", media_kind: "markdown", truncated: false, total_bytes: 16 }));
+    await pestana(page, "Documentos").click();
+    const vistaPrevia = panel(page).locator("[data-vista-previa]");
+    await expect(vistaPrevia.locator(".vista-previa-ruta")).toHaveText("informe.md");
+
+    // La recarga prepara su panel aparte; su vista previa del informe queda retenida.
+    let soltar;
+    const retenida = new Promise((listo) => { soltar = listo; });
+    await page.route(`**/api/runs/*/files/${informe}`, async (ruta) => {
+      await retenida;
+      await responder(ruta, { text: "# Informe", media_kind: "markdown", truncated: false, total_bytes: 9 });
+    });
+    const pedida = page.waitForRequest(`**/api/runs/*/files/${informe}`);
+    await marcar(panel(page).locator(".lista-archivos"));
+    await avisar(page);
+    await pedida;
+
+    // Mientras tanto se elige otro archivo en el panel visible.
+    await panel(page).locator(`.fila-archivo[data-file-key="${otro}"]`).click();
+    await expect(vistaPrevia.locator(".vista-previa-ruta")).toHaveText("otro.md");
+    soltar();
+
+    await expect(panel(page).locator(".lista-archivos:not([data-anterior])")).toHaveCount(1);
+    await expect(panel(page).locator(`.fila-archivo[data-file-key="${otro}"]`)).toHaveAttribute("aria-pressed", "true");
+    await expect(panel(page).locator(`.fila-archivo[data-file-key="${informe}"]`)).toHaveAttribute("aria-pressed", "false");
+    await expect(vistaPrevia.locator(".vista-previa-ruta")).toHaveText("otro.md");
+    await expect(vistaPrevia).toContainText("Otro documento");
+    await expect(panel(page).locator(`.fila-archivo[data-file-key="${otro}"]`)).toBeFocused();
+  });
+
   test("cambiar de pestaña no restaura scroll ni foco anteriores", async ({ page }) => {
     await instalarAvisos(page);
     await abrir(page, muchos(40));
