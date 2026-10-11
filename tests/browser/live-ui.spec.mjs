@@ -74,6 +74,7 @@ const contador = (page) => page.locator('[data-part="pending-count"]');
 const fuenteViva = (page) => page.locator('[data-part="live-source"]');
 const avisoTraza = (page) => page.locator('[data-part="live-notice"]');
 const banda = (page) => page.locator('[data-part="source-notice"]');
+const inspector = (page) => page.locator('#inspector [data-part="inspector"]');
 const animacion = (locator) => locator.evaluate((nodo) => getComputedStyle(nodo).animationName);
 const FALLO_LECTURA = {
   status: 500,
@@ -406,6 +407,68 @@ test.describe("LV-04 pausa y cola de lectura", () => {
     await expect(actual(page)).toHaveAttribute("data-event-id", "E000023");
     await expect(contador(page)).toBeHidden();
     await expect(enVivo(page)).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("abrir «JSON original» en seguimiento es lectura: la llegada va a la cola y el inspector conserva hito, JSON y foco; «Reanudar En Vivo» retoma", async ({ page }) => {
+    const fuente = await abrirVivo(page, { reloj: true });
+    await enVivo(page).click();
+    await expect(inspector(page)).toHaveAttribute("data-event-id", "E000003");
+    await expect(enVivo(page)).toHaveAttribute("aria-pressed", "true");
+    const json = inspector(page).locator('details[data-part="original-json"]');
+    await json.locator("summary").click();
+    await expect(json).toHaveAttribute("open", "");
+    // Interactuar con el inspector deja de seguir, como pausar.
+    await expect(enVivo(page)).toHaveAttribute("aria-pressed", "false");
+    await expect(boton(page, "Seguir recorrido")).toHaveAttribute("aria-pressed", "false");
+    await expect(reanudar(page)).toBeVisible();
+    await page.evaluate(() => { document.activeElement.dataset.testigo = "1"; });
+
+    fuente.traza = conHitos(4);
+    await avisarConReloj(page);
+    await expect(contador(page)).toHaveText("1 nuevo sin presentar");
+    await expect(tarjeta(page, "E000004")).toHaveAttribute("data-state", "received");
+    await expect(actual(page)).toHaveAttribute("data-event-id", "E000003");
+    await expect(inspector(page)).toHaveAttribute("data-event-id", "E000003");
+    await expect(json).toHaveAttribute("open", "");
+    await expect(json.locator("pre")).toContainText('"event_id": "E000003"');
+    expect(await page.evaluate(() => document.activeElement?.dataset.testigo ?? null)).toBe("1");
+    await expect(enVivo(page)).toHaveAttribute("aria-pressed", "false");
+
+    // «Reanudar En Vivo» retoma; el JSON que sigue abierto al repintar no vuelve a suspender.
+    await reanudar(page).click();
+    await expect(inspector(page)).toHaveAttribute("data-event-id", "E000004");
+    await expect(enVivo(page)).toHaveAttribute("aria-pressed", "true");
+    await expect(contador(page)).toBeHidden();
+    await expect(json).toHaveAttribute("open", "");
+    fuente.traza = conHitos(4, 5);
+    await avisarConReloj(page);
+    await expect(inspector(page)).toHaveAttribute("data-event-id", "E000005");
+    await expect(actual(page)).toHaveAttribute("data-event-id", "E000005");
+    await expect(enVivo(page)).toHaveAttribute("aria-pressed", "true");
+    await expect(contador(page)).toBeHidden();
+  });
+
+  test("enfocar «Copiar JSON» en seguimiento es lectura: el foco y el hito se conservan; «Seguir recorrido» retoma", async ({ page }) => {
+    const fuente = await abrirVivo(page, { reloj: true });
+    await enVivo(page).click();
+    await expect(enVivo(page)).toHaveAttribute("aria-pressed", "true");
+    const copiar = inspector(page).getByRole("button", { name: "Copiar JSON", exact: true });
+    await copiar.focus();
+    await expect(enVivo(page)).toHaveAttribute("aria-pressed", "false");
+    await page.evaluate(() => { document.activeElement.dataset.testigo = "1"; });
+
+    fuente.traza = conHitos(4);
+    await avisarConReloj(page);
+    await expect(contador(page)).toHaveText("1 nuevo sin presentar");
+    await expect(inspector(page)).toHaveAttribute("data-event-id", "E000003");
+    const foco = await page.evaluate(() => ({ accion: document.activeElement?.dataset.accion ?? null, testigo: document.activeElement?.dataset.testigo ?? null }));
+    expect(foco).toEqual({ accion: "copiar-json", testigo: "1" });
+
+    // El botón de seguimiento también retoma En Vivo: reconoce la cola y selecciona el último.
+    await boton(page, "Seguir recorrido").click();
+    await expect(inspector(page)).toHaveAttribute("data-event-id", "E000004");
+    await expect(enVivo(page)).toHaveAttribute("aria-pressed", "true");
+    await expect(contador(page)).toBeHidden();
   });
 
   test("cierre coherente a complete en pausa: deshabilita, completa el revelado, conserva cola y selección, sin reproducir solo", async ({ page }) => {

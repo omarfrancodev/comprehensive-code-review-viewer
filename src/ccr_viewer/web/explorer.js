@@ -127,8 +127,12 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
   raiz.append(vacio, franja.elemento, timeline.elemento, controles.elemento, buscador.elemento, tarjetas.elemento);
   container.replaceChildren(raiz);
   const ficha = inspector
-    ? mountInspector(inspector, { getModel: () => modelo, presenter, runKey, inventory, onNavigate: navegarDesdeInspector })
+    ? mountInspector(inspector, { getModel: () => modelo, presenter, runKey, inventory, onNavigate: navegarDesdeInspector, onReading: suspenderSeguimiento })
     : null;
+  // Interactuar con el inspector es lectura (§6.3, §8.2): foco o puntero en su
+  // región; desplegar una sección llega por `onReading` (solo cambios de la persona).
+  const LECTURA_INSPECTOR = ["focusin", "pointerdown"];
+  if (ficha) for (const tipo of LECTURA_INSPECTOR) inspector.addEventListener(tipo, suspenderSeguimiento, true);
 
   /** Un hito de esta traza se selecciona aquí; el resto lo resuelve la aplicación. */
   function navegarDesdeInspector(destino) {
@@ -408,8 +412,13 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
     onSelect?.(actual, origen);
   }
 
+  /**
+   * Selección manual (§6.3): en replay suspende «Seguir recorrido»; en En Vivo
+   * el presentador ya la trata como lectura. El botón lo retoma.
+   */
   function seleccionar(id, origen) {
     if (destruido || !modelo.byId.has(id)) return;
+    if (estado().mode !== "live") seguir = false;
     explicita(id, () => presenter.select(id, origen), origen);
   }
 
@@ -506,11 +515,13 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
     controles.sincronizar(actual, modelo, seguir);
   }
 
-  /** Un desplazamiento manual del panel suspende el seguimiento. */
-  function alDesplazarTarjetas() {
-    const arriba = tarjetas.panel.scrollTop;
-    if (Math.abs(arriba - scrollEsperado) <= 1) return;
-    scrollEsperado = arriba;
+  /**
+   * Comportamiento de lectura (§6.3, §8.2): en En Vivo deja de seguir (las
+   * llegadas pasan a «N nuevos sin presentar» y selección, foco y scroll se
+   * conservan); en replay suspende «Seguir recorrido». Los botones lo retoman.
+   */
+  function suspenderSeguimiento() {
+    if (destruido) return;
     const actual = estado();
     if (!seguirActivo(actual)) return;
     if (actual.mode === "live") {
@@ -519,6 +530,14 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
       seguir = false;
       controles.sincronizar(actual, modelo, false);
     }
+  }
+
+  /** Un desplazamiento manual del panel suspende el seguimiento. */
+  function alDesplazarTarjetas() {
+    const arriba = tarjetas.panel.scrollTop;
+    if (Math.abs(arriba - scrollEsperado) <= 1) return;
+    scrollEsperado = arriba;
+    suspenderSeguimiento();
   }
 
   function focusSelected() {
@@ -566,6 +585,7 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
       desuscribir();
       cerrarDialogo?.();
       vivo.destroy();
+      if (ficha) for (const tipo of LECTURA_INSPECTOR) inspector.removeEventListener(tipo, suspenderSeguimiento, true);
       ficha?.destroy();
       raiz.remove();
     },

@@ -250,7 +250,8 @@ dirección indique otro.
   relaciones, evidencia y «Copiar resumen». Seleccionar una tarjeta, un marcador
   o un actor converge en el mismo ID y en el mismo inspector, sin mover el foco a
   él. «Seguir recorrido» desplaza sólo el panel de tarjetas y se suspende al
-  desplazar o seleccionar manualmente; un botón lo retoma.
+  desplazar, al seleccionar manualmente o al interactuar con el inspector (foco,
+  puntero o desplegar una sección); un botón lo retoma.
 - **Inspector.** Muestra el hito completo: tiempos con hora local, UTC y valor
   original; actor, registrador y ejecutor por separado; procedencia, autoridad,
   relaciones y evidencia; y el JSON original desplegable, con los campos
@@ -294,8 +295,12 @@ tarjetas ni actores.
   nuevo se añade al final y se presenta con el revelado; en una ráfaga sólo se
   anima el más reciente y los anteriores aparecen completos.
 - Al **pausar**, la recepción continúa: los IDs nuevos se acumulan en «N nuevos
-  sin presentar». «Mostrar nuevos» los incorpora sin desplazar ni reanudar, y
-  «Reanudar En Vivo» reconoce la cola y vuelve al último hito.
+  sin presentar». Interactuar con el inspector (por ejemplo, abrir el JSON
+  original o enfocar un botón de copia), seleccionar un hito a mano o desactivar
+  «Seguir recorrido» tiene el mismo efecto: el hito, el foco y el desplazamiento
+  se conservan. «Mostrar nuevos» los incorpora sin desplazar ni reanudar, y
+  «Reanudar En Vivo» (o «Seguir recorrido») reconoce la cola y vuelve al último
+  hito.
 - Si el cierre deja de ser `processing`, En Vivo se deshabilita, el indicador de
   carga cesa y el revelado en curso se completa. Los registros recibidos siguen
   disponibles y los pendientes se conservan hasta mostrarlos.

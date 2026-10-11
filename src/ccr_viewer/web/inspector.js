@@ -67,6 +67,8 @@ async function copiar(valor, estado, nombre) {
  *   vuelve a pedir tras una recarga, sigue a la vista el último inventario listo.
  * - `onNavigate(destino)`: `{scope:"event"|"finding"|"check", id}`,
  *   `{scope:"run", runKey, id, label}` o `{scope:"file", fileKey, relativePath}`.
+ * - `onReading()`: la persona desplegó o plegó una sección (lectura, §8.2). Un
+ *   repintado que vuelve a crear una sección ya abierta no lo llama.
  *
  * Devuelve `update()` (refleja modelo y selección), `expand(seccion)`
  * (`"relaciones"`/`"evidencia"`) y `destroy()`.
@@ -77,7 +79,7 @@ async function copiar(valor, estado, nombre) {
  * su sitio conservando los `<details>` abiertos, el foco (por clave), el
  * desplazamiento y la selección de texto que sigan existiendo.
  */
-export function mountInspector(container, { getModel, presenter, runKey, inventory, onNavigate } = {}) {
+export function mountInspector(container, { getModel, presenter, runKey, inventory, onNavigate, onReading } = {}) {
   const raiz = elemento("div", { clase: "inspector", atributos: { "data-part": "inspector", "data-event-id": "" } });
   const rotulo = elemento("p", { clase: "inspector-rotulo", texto: "Hito seleccionado" });
   let cuerpo = elemento("div", { clase: "inspector-cuerpo", atributos: { "data-part": "inspector-body" } });
@@ -269,7 +271,11 @@ export function mountInspector(container, { getModel, presenter, runKey, invento
     const detalles = elemento("details", { clase: "inspector-detalle", atributos: { "data-part": parte, open: abiertas[seccion] } });
     detalles.append(elemento("summary", { texto: titulo, atributos: { "data-accion": `sumario-${seccion}` } }));
     detalles.addEventListener("toggle", () => {
+      // Un detalle creado abierto por un repintado (o por `expand`) coincide con
+      // `abiertas`; solo un cambio de la persona lo contradice.
+      const dePersona = abiertas[seccion] !== detalles.open;
       abiertas[seccion] = detalles.open;
+      if (dePersona && !destruido) onReading?.();
     });
     return detalles;
   }
@@ -453,8 +459,10 @@ export function mountInspector(container, { getModel, presenter, runKey, invento
       orden = elemento("details", { clase: "inspector-detalle inspector-orden-temporal", atributos: { "data-part": "temporal-order" } });
       orden.append(elemento("summary", { texto: "Orden temporal declarado por la fuente", atributos: { "data-accion": "sumario-orden" } }));
       // Se rellena al desplegarlo: una traza de 10 000 hitos no lo pinta de antemano.
+      // Se crea plegado y nunca se abre por programa: todo cambio es de la persona.
       orden.addEventListener("toggle", () => {
         if (orden?.open) llenarOrden();
+        if (!destruido) onReading?.();
       });
       raiz.append(orden);
     }

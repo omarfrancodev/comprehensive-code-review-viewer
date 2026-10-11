@@ -382,6 +382,51 @@ test.describe("revelado progresivo del elemento", () => {
     await expect(seguir).toHaveAttribute("aria-pressed", "false");
   });
 
+  test("seguir recorrido: una selección manual o leer en el inspector lo desactiva y el botón lo retoma", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 600 });
+    await abrirTraza(page, trazaSintetica(30));
+    const seguir = boton(page, "Seguir recorrido");
+    await expect(seguir).toHaveAttribute("aria-pressed", "true");
+    // Selección manual (marcador del timeline): suspende el seguimiento.
+    await page.locator('[data-part="timeline"] button[data-event-id="E000001"]').click();
+    await expect(tarjetaActual(page)).toHaveAttribute("data-event-id", "E000001");
+    await expect(seguir).toHaveAttribute("aria-pressed", "false");
+    await seguir.click();
+    await expect(seguir).toHaveAttribute("aria-pressed", "true");
+    // Foco de lectura en el inspector: también lo suspende, sin pausar ni cambiar la selección.
+    await page.locator("#inspector").getByRole("button", { name: "Copiar ID", exact: true }).focus();
+    await expect(seguir).toHaveAttribute("aria-pressed", "false");
+    await expect(tarjetaActual(page)).toHaveAttribute("data-event-id", "E000001");
+    // Desplegar una sección con el puntero también.
+    await seguir.click();
+    await expect(seguir).toHaveAttribute("aria-pressed", "true");
+    await page.locator('#inspector details[data-part="original-json"] > summary').click();
+    await expect(seguir).toHaveAttribute("aria-pressed", "false");
+    // Plegarla sin puntero ni foco (p. ej. una tecnología de apoyo): el cambio de la sección basta.
+    await seguir.click();
+    await expect(seguir).toHaveAttribute("aria-pressed", "true");
+    await page.evaluate(() => document.querySelector('#inspector details[data-part="original-json"] > summary').click());
+    await expect(page.locator('#inspector details[data-part="original-json"]')).not.toHaveAttribute("open", "");
+    await expect(seguir).toHaveAttribute("aria-pressed", "false");
+
+    // Retomado con el botón, el recorrido vuelve a desplazar el panel hasta la tarjeta actual.
+    await seguir.click();
+    await expect(seguir).toHaveAttribute("aria-pressed", "true");
+    const panel = page.locator(".tarjetas-panel");
+    expect(await panel.evaluate((nodo) => nodo.scrollHeight > nodo.clientHeight)).toBe(true);
+    await boton(page, "Reproducir").click();
+    await page.clock.runFor(2350 * 9);
+    await expect(tarjetaActual(page)).toHaveAttribute("data-event-id", "E000010");
+    const dentro = await panel.evaluate((nodo) => {
+      const marco = nodo.getBoundingClientRect();
+      const li = nodo.querySelector('li[aria-current="true"]').getBoundingClientRect();
+      return li.top >= marco.top - 1 && li.bottom <= marco.bottom + 1;
+    });
+    expect(dentro).toBe(true);
+    expect(await panel.evaluate((nodo) => nodo.scrollTop)).toBeGreaterThan(0);
+    await expect(seguir).toHaveAttribute("aria-pressed", "true");
+  });
+
   test("una región fijada por el foco vuelve a seguir la selección al salir el foco", async ({ page }) => {
     await abrirTraza(page, trazaSintetica(60));
     await boton(page, "Ventana anterior").click();
