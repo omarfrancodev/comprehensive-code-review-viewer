@@ -491,8 +491,10 @@ test.describe("recarga de la fuente (§11)", () => {
     return seleccionado;
   }
 
+  let cursor = 1;
   async function recargar(page) {
-    await page.evaluate((clave) => window.entregarAviso({ kind: "run_changed", run_key: clave, cursor: 2 }), RUN_A);
+    await page.evaluate(() => { document.querySelector('[data-part="chain"] strong').dataset.testigo = "1"; });
+    await page.evaluate(([clave, n]) => window.entregarAviso({ kind: "run_changed", run_key: clave, cursor: n }), [RUN_A, ++cursor]);
     // La cadena se repinta con cada modelo nuevo: su testigo desaparece.
     await expect(page.locator('[data-part="chain"] strong[data-testigo]')).toHaveCount(0);
     await page.evaluate(() => new Promise((listo) => requestAnimationFrame(() => setTimeout(listo, 100))));
@@ -573,5 +575,169 @@ test.describe("recarga de la fuente (§11)", () => {
     expect(estado.jsonAbierto).toBe(true);
     expect(estado.evidenciaAbierta).toBe(true);
     expect(estado.pendiente).toBe(false);
+  });
+
+  test("N2: una recarga que añade el hito de destino muestra su botón sin cambiar la selección", async ({ page }) => {
+    await instalarAvisos(page);
+    const conDestino = (incluir) => {
+      const traza = trazaBase();
+      traza.relations = [{ event_id: "E000003", relation: "records", raw: "E000004", target: "E000004", status: "resolved", run_key: RUN_A, file_key: null }];
+      if (incluir) {
+        traza.events.push({ ...structuredClone(traza.events[1]), event_id: "E000004", sequence: 4, summary: "Destino recién llegado", evidence: [] });
+        traza.valid_prefix_length = 4;
+      }
+      return traza;
+    };
+    let traza = conDestino(false);
+    await abrirTraza(page, () => traza);
+    await abrirRelaciones(page);
+    await expect(relaciones(page)).toContainText("no está en el prefijo aceptado");
+    await expect(relaciones(page).getByRole("button", { name: "Abrir E000004" })).toHaveCount(0);
+    traza = conDestino(true);
+    await recargar(page);
+    await expect(page.locator('[data-part="cards"] li[data-event-id="E000004"]')).toHaveCount(1);
+    await expect(relaciones(page).getByRole("button", { name: "Abrir E000004" })).toHaveCount(1);
+    await expect(inspector(page)).toHaveAttribute("data-event-id", "E000003");
+  });
+});
+
+test.describe("foco del inspector ante cambios de selección y recargas", () => {
+  async function instalarAvisos(page) {
+    await page.addInitScript(() => {
+      window.EventSource = class {
+        addEventListener(tipo, devolucion) {
+          if (tipo === "notice") window.entregarAviso = (aviso) => devolucion({ data: JSON.stringify(aviso) });
+        }
+        close() {}
+      };
+    });
+  }
+
+  let cursor = 100;
+  async function recargar(page) {
+    await page.evaluate(() => { document.querySelector('[data-part="chain"] strong').dataset.testigo = "1"; });
+    await page.evaluate(([clave, n]) => window.entregarAviso({ kind: "run_changed", run_key: clave, cursor: n }), [RUN_A, ++cursor]);
+    await expect(page.locator('[data-part="chain"] strong[data-testigo]')).toHaveCount(0);
+    await page.evaluate(() => new Promise((listo) => requestAnimationFrame(() => setTimeout(listo, 100))));
+  }
+
+  /** Descripción del elemento enfocado: dónde está y qué es. */
+  const focoActual = (page) => page.evaluate(() => {
+    const activo = document.activeElement;
+    return {
+      enInspector: Boolean(activo && document.getElementById("inspector").contains(activo)),
+      accion: activo?.dataset?.accion ?? null,
+      encabezado: activo?.classList.contains("inspector-id") ?? false,
+      texto: activo?.textContent ?? "",
+      testigo: activo?.dataset?.testigo ?? null,
+      seccion: activo?.closest("details[data-part]")?.dataset.part ?? null,
+      tarjeta: activo?.closest('[data-part="cards"] li')?.dataset.eventId ?? null,
+    };
+  });
+
+  /** Pulsa un control del explorador sin moverle el foco (`click()` del DOM no enfoca). */
+  const pulsarSinFoco = (page, texto) =>
+    page.evaluate((t) => [...document.querySelectorAll("[data-explorer] button")].find((b) => b.textContent === t).click(), texto);
+
+  test("(a) el recorrido cambia de hito con el foco en el inspector: el foco sigue en el inspector", async ({ page }) => {
+    await page.clock.install();
+    await abrirTraza(page);
+    await page.clock.pauseAt(new Date(Date.now() + 60_000));
+    await pulsarSinFoco(page, "Reiniciar");
+    await expect(inspector(page)).toHaveAttribute("data-event-id", "E000001");
+    await inspector(page).getByRole("button", { name: "Copiar ID", exact: true }).focus();
+    await pulsarSinFoco(page, "Reproducir");
+    await page.clock.runFor(2600);
+    await expect(inspector(page)).toHaveAttribute("data-event-id", "E000002");
+    const foco = await focoActual(page);
+    expect(foco.enInspector).toBe(true);
+    expect(foco.accion).toBe("copiar-id");
+  });
+
+  test("(a) una búsqueda con Enter cambia de hito con el foco en un resumen del inspector: no queda en <body>", async ({ page }) => {
+    await abrirTraza(page);
+    await abrirRelaciones(page);
+    await relaciones(page).locator("summary").focus();
+    // Búsqueda y Enter despachados sin mover el foco al campo.
+    await page.evaluate(() => {
+      const campo = document.querySelector('[data-part="search"] input');
+      campo.value = "E000001";
+      campo.dispatchEvent(new Event("input"));
+      campo.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    await expect(inspector(page)).toHaveAttribute("data-event-id", "E000001");
+    const foco = await focoActual(page);
+    expect(foco.enInspector).toBe(true);
+    expect(foco.seccion).toBe("relations");
+  });
+
+  test("(b) el foco en el encabezado tras una navegación explícita sobrevive a un cambio real del mismo hito", async ({ page }) => {
+    await instalarAvisos(page);
+    let traza = trazaBase();
+    await abrirTraza(page, () => traza);
+    await seleccionar(page, "E000002");
+    await abrirRelaciones(page);
+    await relaciones(page).getByRole("button", { name: "Abrir E000001" }).click();
+    await expect(inspector(page)).toHaveAttribute("data-event-id", "E000001");
+    let foco = await focoActual(page);
+    expect(foco.encabezado).toBe(true);
+    await page.evaluate(() => { document.activeElement.dataset.testigo = "1"; });
+    traza = trazaBase();
+    traza.relations.push({ event_id: "E000003", relation: "records", raw: "E000001", target: "E000001", status: "resolved", run_key: RUN_A, file_key: null });
+    await recargar(page);
+    await expect(relaciones(page).locator("summary")).toHaveText(/Relaciones \(2\)/);
+    foco = await focoActual(page);
+    expect(foco.enInspector).toBe(true);
+    expect(foco.encabezado).toBe(true);
+    expect(foco.texto).toBe("E000001");
+    // Es el encabezado nuevo: el cuerpo se repintó.
+    expect(foco.testigo).toBeNull();
+  });
+
+  test("(c) si el control enfocado desaparece, el foco pasa al resumen de su sección y luego al encabezado", async ({ page }) => {
+    await instalarAvisos(page);
+    const relacion = (origen, destino) => ({ event_id: origen, relation: "follows", raw: destino, target: destino, status: "resolved", run_key: RUN_A, file_key: null });
+    let traza = trazaBase();
+    traza.relations = [relacion("E000002", "E000001"), relacion("E000003", "E000002")];
+    await abrirTraza(page, () => traza);
+    await seleccionar(page, "E000002");
+    await abrirRelaciones(page);
+    await relaciones(page).getByRole("button", { name: "Abrir E000001" }).focus();
+    traza = trazaBase();
+    traza.relations = [relacion("E000003", "E000002")];
+    await recargar(page);
+    await expect(relaciones(page).locator("summary")).toHaveText(/Relaciones \(1\)/);
+    let foco = await focoActual(page);
+    expect(foco.enInspector).toBe(true);
+    expect(foco.seccion).toBe("relations");
+    expect(foco.texto).toMatch(/Relaciones \(1\)/);
+
+    traza = trazaBase();
+    traza.relations = [];
+    await recargar(page);
+    await expect(inspector(page).locator('[data-vacio="relaciones"]')).toHaveCount(1);
+    foco = await focoActual(page);
+    expect(foco.enInspector).toBe(true);
+    expect(foco.encabezado).toBe(true);
+  });
+
+  test("(d) con el foco fuera del inspector, repintarlo no le lleva el foco", async ({ page }) => {
+    await instalarAvisos(page);
+    let traza = trazaBase();
+    await abrirTraza(page, () => traza);
+    await page.locator('[data-part="cards"] li[data-event-id="E000001"] button').first().focus();
+    traza = trazaBase();
+    traza.relations.push({ event_id: "E000003", relation: "records", raw: "E000001", target: "E000001", status: "resolved", run_key: RUN_A, file_key: null });
+    await recargar(page);
+    await expect(relaciones(page).locator("summary")).toHaveText(/Relaciones \(6\)/);
+    let foco = await focoActual(page);
+    expect(foco.enInspector).toBe(false);
+    expect(foco.tarjeta).toBe("E000001");
+    // Un cambio de selección desde otra región tampoco lleva el foco al inspector.
+    await pulsarSinFoco(page, "Evento anterior");
+    await expect(inspector(page)).toHaveAttribute("data-event-id", "E000002");
+    foco = await focoActual(page);
+    expect(foco.enInspector).toBe(false);
+    expect(foco.tarjeta).toBe("E000001");
   });
 });

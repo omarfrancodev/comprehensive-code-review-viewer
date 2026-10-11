@@ -95,14 +95,17 @@ export function mountInspector(container, { getModel, presenter, runKey, invento
   let pintado = { id: undefined, firma: undefined };
   let etiquetas = { modelo: null, mapa: new Map() };
   let destruido = false;
-  // Solo una navegación explícita desde el inspector a otro hito lleva el foco a su encabezado.
+  // Navegación explícita desde el inspector a otro hito: su encabezado recibe el foco y se muestra.
   let navegacionExplicita = null;
 
   const navegar = (destino) => {
     if (destruido) return;
     navegacionExplicita = destino?.scope === "event" ? destino.id : null;
-    onNavigate?.(destino);
-    navegacionExplicita = null;
+    try {
+      onNavigate?.(destino);
+    } finally {
+      navegacionExplicita = null;
+    }
   };
 
   function etiquetasDe(modelo) {
@@ -546,15 +549,58 @@ export function mountInspector(container, { getModel, presenter, runKey, invento
   // --- Actualización ---------------------------------------------------------
 
   /**
-   * Todo lo que el cuerpo muestra para el hito: el original, sus relaciones,
-   * la etiqueta de actor y, si declara evidencia, el inventario visible.
+   * Todo lo que el cuerpo muestra para el hito y depende de la fuente: el
+   * original, sus relaciones con la presencia de su otro extremo en el modelo
+   * (decide si hay botón), la etiqueta de actor y, si declara evidencia, el
+   * inventario visible.
    */
   function firmaDe(modelo, id, evento) {
     if (!evento) return "sin-hito";
     const { outgoing, incoming } = modelo.relationsOf(id);
+    const presente = (valor) => typeof valor === "string" && modelo.byId.has(valor);
+    const salientes = outgoing.map((relacion) => [relacion, presente(relacion?.target)]);
+    const entrantes = incoming.map((relacion) => [relacion, presente(relacion?.event_id)]);
     const etiqueta = etiquetasDe(modelo).get(actorKey(evento.actor)) ?? null;
     const conEvidencia = evidenciasDe(evento).length > 0;
-    return JSON.stringify([evento, outgoing, incoming, etiqueta, conEvidencia ? firmaDeInventario(inventario) : null]);
+    return JSON.stringify([evento, salientes, entrantes, etiqueta, conEvidencia ? firmaDeInventario(inventario) : null]);
+  }
+
+  /**
+   * Dónde estaba el foco dentro del cuerpo: control (`data-accion`), el
+   * encabezado, un bloque de texto (`data-texto`) y el detalle que lo contiene.
+   */
+  function describirFoco(activo) {
+    const detalles = activo.closest("details[data-part]");
+    return {
+      accion: activo.closest("[data-accion]")?.getAttribute("data-accion") ?? null,
+      encabezado: activo.classList?.contains("inspector-id") ?? false,
+      texto: activo.closest("[data-texto]")?.getAttribute("data-texto") ?? null,
+      detalle: detalles && cuerpo.contains(detalles) ? detalles.getAttribute("data-part") : null,
+    };
+  }
+
+  const enfocar = (nodo) => {
+    if (!nodo) return false;
+    nodo.focus({ preventScroll: true });
+    return document.activeElement === nodo;
+  };
+
+  /**
+   * Tras repintar, si el foco estaba en el cuerpo y quedó fuera de él: el mismo
+   * control, el resumen de su sección y, por último, el encabezado del hito.
+   * Si el foco no estaba en el inspector, nunca se toca.
+   */
+  function recuperarFoco(foco) {
+    const activo = document.activeElement;
+    if (activo && activo !== document.body && cuerpo.contains(activo)) return;
+    const candidatos = [
+      foco.accion && cuerpo.querySelector(`[data-accion="${foco.accion}"]`),
+      foco.encabezado && cuerpo.querySelector(".inspector-id"),
+      foco.texto && cuerpo.querySelector(`[data-texto="${foco.texto}"]`),
+      foco.detalle && cuerpo.querySelector(`details[data-part="${foco.detalle}"] > summary`),
+      cuerpo.querySelector(".inspector-id"),
+    ];
+    for (const candidato of candidatos) if (enfocar(candidato)) return;
   }
 
   function update() {
@@ -574,8 +620,8 @@ export function mountInspector(container, { getModel, presenter, runKey, invento
     raiz.setAttribute("data-event-id", id ?? "");
 
     const activo = document.activeElement;
-    const focoDentro = Boolean(activo && cuerpo.contains(activo));
-    const claveFoco = focoDentro ? activo.closest("[data-accion]")?.getAttribute("data-accion") : null;
+    // Solo un foco que ya estaba en el cuerpo se conserva; fuera del inspector nunca se toca.
+    const foco = activo && activo !== document.body && cuerpo.contains(activo) ? describirFoco(activo) : null;
     if (mismoHito) {
       // Mismo hito con cambios: en su sitio, sin transición y conservando la lectura.
       const seleccionGuardada = capturarSeleccion();
@@ -583,8 +629,7 @@ export function mountInspector(container, { getModel, presenter, runKey, invento
       cuerpo.replaceChildren(...contenidoDe(modelo, id, evento));
       restaurarDesplazamiento(desplazamiento);
       restaurarSeleccion(seleccionGuardada);
-      // El control enfocado vuelve si sigue existiendo; si no, el foco no se lleva a otro sitio.
-      if (claveFoco) cuerpo.querySelector(`[data-accion="${claveFoco}"]`)?.focus({ preventScroll: true });
+      if (foco) recuperarFoco(foco);
       return;
     }
     // Hito nuevo: un cuerpo nuevo entra con la transición corta del inspector.
@@ -592,8 +637,17 @@ export function mountInspector(container, { getModel, presenter, runKey, invento
     nuevo.append(...contenidoDe(modelo, id, evento));
     cuerpo.replaceWith(nuevo);
     cuerpo = nuevo;
-    // Solo la navegación explícita desde el inspector lleva el foco al encabezado del hito.
-    if (focoDentro && navegacionExplicita === id) cuerpo.querySelector(".inspector-id")?.focus({ preventScroll: true });
+    if (!foco) return;
+    if (id !== null && navegacionExplicita === id) {
+      // Navegación explícita desde el inspector: el encabezado del hito nuevo recibe el foco y se muestra.
+      const encabezado = cuerpo.querySelector(".inspector-id");
+      if (enfocar(encabezado)) {
+        encabezado.scrollIntoView?.({ block: "nearest" });
+        return;
+      }
+    }
+    // Cualquier otro cambio de selección (recorrido, búsqueda, deslizador, llegada) no deja el foco en `<body>`.
+    recuperarFoco(foco);
   }
 
   return {
