@@ -11,15 +11,24 @@ visual).
 
 ## Árbol verificado
 
-- Rama `feat/interfaz-premium`, commit `2cdab5f`
-  (`2cdab5fa74990967ec498c9297fe3855e71559c3`). Es el árbol que se ejecutó.
-- Sobre `7edcaa4` (tareas 1–14) contiene las dos correcciones de producto de la
+- Rama `feat/interfaz-premium`, commit `314e669`
+  (`314e6692c0ea9851c36fca24b2b7a310306a796b`). Es el árbol que se ejecutó.
+- Sobre `7edcaa4` (tareas 1–14) contiene las correcciones de producto de la
   revisión final: `4f8398e` (interactuar con el inspector o seleccionar a mano
-  suspende el seguimiento, §6.3 y §8.2) y `2cdab5f` (se muestra el repositorio
-  declarado y no la identidad normalizada). El commit que actualiza este informe
-  solo cambia documentación.
+  suspende el seguimiento, §6.3 y §8.2), `2cdab5f` (se muestra el repositorio
+  declarado y no la identidad normalizada) y `dccd390` (sin «Copiar resumen» en
+  las tarjetas), y las cinco del review del PR #4: `b3b2281` (un `verified`
+  desconocido no se presenta como negativo), `976995a` (Documentos conserva la
+  selección hecha durante una recarga), `63a10a5` (buscar pausa el recorrido y
+  suspende el seguimiento), `c05adbf` (la lista de tarjetas se limita al prefijo
+  presentado) y `314e669` (Atrás a una entrada de Trazabilidad sin `event`
+  restaura el hito por defecto). El commit que actualiza este informe solo
+  cambia documentación.
 - Las suites se ejecutaron con el árbol de trabajo limpio en ese commit (más este
-  documento aún sin confirmar, que ninguna prueba lee).
+  documento aún sin confirmar, que ninguna prueba lee). Las de navegador usaron
+  el servidor estático de pruebas en otro puerto (`CCR_STATIC_PORT=8791` y
+  `CCR_BASE_URL=http://127.0.0.1:8791`) porque el 8765 lo ocupaba un proceso
+  ajeno a este worktree.
 
 ## Entorno
 
@@ -39,11 +48,11 @@ Todos desde la raíz del worktree, con `PYTHONPATH=src` para Python.
 
 | Comando | Resultado de esta ejecución |
 | --- | --- |
-| `python -m unittest discover -s tests -p "test_*.py"` | **267 pruebas, OK**, 0 fallos, 0 errores, 0 omitidas (65.0 s), una ejecución |
-| `node --test "tests/js/*.test.mjs"` | **417 pruebas en 59 suites: 417 aprobadas**, 0 fallos, 0 omitidas |
-| `node tools/vendor.mjs` y `git diff --exit-code src/ccr_viewer/web/vendor` | Salida 0 en ambos: sin diferencias |
-| `npx playwright test --project=chromium` | **257 aprobadas**, 0 fallos, 0 omitidas (6.0 min) |
-| `npx playwright test --project=firefox` | **253 aprobadas, 4 omitidas**, 0 fallos (6.6 min) |
+| `python -m unittest discover -s tests -p "test_*.py"` | **267 pruebas, OK**, 0 fallos, 0 errores, 0 omitidas (63.0 s), una ejecución |
+| `node --test "tests/js/*.test.mjs"` | **420 pruebas en 59 suites: 420 aprobadas**, 0 fallos, 0 omitidas |
+| `node tools/vendor.mjs` y `git diff --exit-code src/ccr_viewer/web/vendor` | **No repetido en esta ejecución** (las correcciones no tocan `vendor/`); en la anterior (`2cdab5f`), salida 0 en ambos |
+| `npx playwright test --project=chromium` | **263 aprobadas**, 0 fallos, 0 omitidas (6.2 min) |
+| `npx playwright test --project=firefox` | **259 aprobadas, 4 omitidas**, 0 fallos (6.9 min). Una ejecución anterior sobre el mismo commit tuvo 1 fallo en `readonly.spec.mjs` «RO-01: revisión en procesamiento…» (la vista del Archivo, leída durante una escritura del productor real, no mostró «Integridad:» en 15 s); la prueba pasó 3 de 3 veces aislada y la suite completa se repitió sin fallos |
 | `python -m pip wheel . --no-deps --wheel-dir <temporal>` | **No repetido en esta ejecución.** En la ejecución anterior (`78168ff`) se construyó `comprehensive_code_review_viewer-0.1.0-py3-none-any.whl`; ver «Hallazgo de empaquetado». La construcción desde una copia limpia la repite `tests/test_packaging.py`, que pasó en la suite Python de esta ejecución |
 
 Las 4 pruebas omitidas en Firefox son las que dependen de Chromium:
@@ -52,9 +61,9 @@ copia el texto completo», `inspector.spec.mjs` «copiar usa el valor completo»
 «copiar ID copia el valor completo» y `perf.spec.mjs`.
 
 Chromium por archivo de especificación: a11y 6, acceptance 7, document-content 2,
-explorer 23, explorer-playback 18, hostile 2, inspector 26, library 33, live-real 3,
-live-transition 1, live-ui 31, markdown 8, perf 1, profile 8, readonly 2, shell 15,
-views 37, visual 26, wiring 8.
+explorer 23, explorer-playback 20, hostile 2, inspector 26, library 33, live-real 3,
+live-transition 1, live-ui 32, markdown 8, perf 1, profile 8, readonly 2, shell 16,
+views 39, visual 26, wiring 8.
 
 Pruebas de empaquetado de `tests/test_packaging.py` (11, todas OK):
 las siete de contenido de la wheel (módulos Python, 42 recursos estáticos
