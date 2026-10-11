@@ -444,6 +444,59 @@ describe("Resumen (renderProfile)", () => {
     assert.doesNotMatch(principal, /caduc/i);
   });
 
+  it("verified de responsable y autores solo se traduce si es true o false", () => {
+    const conVerified = (verified) => {
+      const nodo = crearElemento();
+      renderProfile(
+        nodo,
+        revision({
+          responsible: { name: "Responsable sintética", username: "usuaria", verified },
+          change_authors: [{ name: "Autora sintética", username: null, verified, commits: ["9f1c2b7"] }],
+        }),
+      );
+      return nodo.textoCompleto();
+    };
+    assert.match(conVerified(true), /Cuenta verificada por la fuente\./);
+    assert.match(conVerified(true), /· cuenta verificada/);
+    assert.match(conVerified(false), /Identidad declarada, no verificada\./);
+    assert.match(conVerified(false), /· identidad no verificada/);
+    for (const verified of ["unknown", null, 0, "false", {}]) {
+      const texto = conVerified(verified);
+      const original = JSON.stringify(verified);
+      assert.doesNotMatch(texto, /cuenta verificada|no verificada/i, `${original} no es una declaración de la fuente`);
+      assert.equal(texto.match(/estado desconocido/g)?.length, 2, `${original}: responsable y autora en estado desconocido`);
+      assert.ok(texto.includes(original), `${original} conserva su valor original`);
+    }
+    // Ausente: la fuente no declara nada; tampoco se le atribuye una negativa.
+    const sinDato = crearElemento();
+    renderProfile(sinDato, revision({ responsible: { name: "Responsable sintética" }, change_authors: [{ name: "Autora" }] }));
+    assert.doesNotMatch(sinDato.textoCompleto(), /cuenta verificada|no verificada/i);
+    assert.equal(sinDato.textoCompleto().match(/verificación no declarada/gi)?.length, 2);
+  });
+
+  it("stale, adequate y material solo activan sus marcas con un booleano declarado", () => {
+    for (const valor of ["unknown", null, 0, "false", {}]) {
+      const nodo = crearElemento();
+      renderProfile(
+        nodo,
+        revision({
+          coverage: {
+            stale: valor,
+            adequate: valor,
+            verification: "same_session",
+            areas: [{ area: "A", status: "partial", details: "Parcial", material: valor }],
+          },
+        }),
+      );
+      const texto = nodo.textoCompleto();
+      const original = JSON.stringify(valor);
+      assert.doesNotMatch(texto, /Revisión caducada|Cobertura insuficiente/, `${original} no activa marcas`);
+      assert.doesNotMatch(texto, /(^|\s)material(\s|$)/, `${original} no marca el área como material`);
+      assert.equal(texto.match(/estado desconocido/g)?.length, 3, `${original}: tres valores en estado desconocido`);
+      assert.ok(texto.includes(original), `${original} conserva su valor original`);
+    }
+  });
+
   it("no crea el details cuando no hay campos sin presentación propia", () => {
     const nodo = crearElemento();
     const sinExtras = revision();
@@ -593,6 +646,31 @@ describe("Seguimiento (renderHistory)", () => {
     assert.match(texto, /F001/);
     assert.match(texto, /CR-0000000000000000bbbb/);
     assert.match(texto, /archivo\/anterior/);
+  });
+
+  it("verified de una revisión anterior solo se traduce si es true o false", () => {
+    const conVerified = (verified) => {
+      const nodo = crearElemento();
+      renderHistory(
+        nodo,
+        revision({ previous_reviews: [{ review_id: "CR-0000000000000000bbbb", reference: "archivo/anterior", verified }] }),
+        () => {},
+      );
+      return nodo;
+    };
+    assert.match(textoSinDetalles(conVerified(true)), /· verificada por la fuente/);
+    assert.match(textoSinDetalles(conVerified(false)), /no verificada por la fuente/);
+    for (const verified of ["unknown", null, 0, "false", {}]) {
+      const nodo = conVerified(verified);
+      const principal = textoSinDetalles(nodo);
+      const original = JSON.stringify(verified);
+      assert.doesNotMatch(principal, /verificada por la fuente/, `${original} no es una declaración de la fuente`);
+      assert.match(principal, /estado desconocido/, `${original} se presenta como desconocido`);
+      assert.ok(principal.includes(original), `${original} conserva su valor original`);
+      const json = detalles(nodo).find((n) => /CR-0000000000000000bbbb/.test(n.textContent));
+      assert.ok(json, `${original}: el JSON de la entrada queda accesible`);
+      assert.match(json.textContent, /"verified"/);
+    }
   });
 
   it("«Abrir revisión anterior» solo existe para vínculos resueltos de otra revisión", () => {

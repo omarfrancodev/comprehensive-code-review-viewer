@@ -115,3 +115,21 @@ export const CLASES_FALLO = {
   fixture: "defecto de la prueba",
   environment: "problema de entorno",
 };
+
+/**
+ * Bandera booleana declarada por la fuente. Solo `true` («si») y `false` («no»)
+ * se traducen; un campo ausente es «ausente» y cualquier otra forma (`null`,
+ * `"unknown"`, `"false"`, `0`, un objeto…) es «desconocido»: nunca se convierte
+ * en una declaración que la fuente no hizo.
+ */
+export function banderaDeclarada(valor) {
+  if (valor === true) return "si";
+  if (valor === false) return "no";
+  if (valor === undefined) return "ausente";
+  return "desconocido";
+}
+
+/** Texto de un valor desconocido tal como lo declara la fuente. */
+export function originalDeclarado(valor) {
+  return JSON.stringify(valor) ?? String(valor);
+}

@@ -9,7 +9,14 @@
  */
 
 import { campo, elemento, listaDefinitiva, seccion } from "./dom.js";
-import { ESTADOS_REREVIEW, ESTADOS_VINCULO, ORIGENES_VINCULO, valorLegible } from "./estados.js";
+import {
+  ESTADOS_REREVIEW,
+  ESTADOS_VINCULO,
+  ORIGENES_VINCULO,
+  banderaDeclarada,
+  originalDeclarado,
+  valorLegible,
+} from "./estados.js";
 
 const CAMPOS_ENTRADA = [
   "status", "details", "previous_review_id", "previous_reference",
@@ -140,10 +147,15 @@ function seccionRevisionesAnteriores(review) {
       const partes = [];
       if (fila.review_id !== undefined) partes.push(String(fila.review_id));
       if (fila.reference !== undefined) partes.push(`referencia ${fila.reference}`);
-      if (fila.verified !== undefined) {
-        partes.push(fila.verified === true ? "verificada por la fuente" : "no verificada por la fuente");
+      // Solo true/false son una declaración; otra forma queda desconocida y con su JSON.
+      const verificacion = banderaDeclarada(fila.verified);
+      if (verificacion === "si") partes.push("verificada por la fuente");
+      else if (verificacion === "no") partes.push("no verificada por la fuente");
+      else if (verificacion === "desconocido") {
+        partes.push(`verificación en estado desconocido (valor original: ${originalDeclarado(fila.verified)})`);
       }
       item.append(elemento("span", { texto: partes.join(" · ") }));
+      if (verificacion === "desconocido") item.append(detallesJson("JSON original de la revisión anterior", previa));
     } else {
       item.append(detallesJson("JSON original", previa));
     }

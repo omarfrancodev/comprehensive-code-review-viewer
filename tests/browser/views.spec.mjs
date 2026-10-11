@@ -225,6 +225,19 @@ test.describe("Seguimiento", () => {
     await expect(panel(page)).toContainText("Sin entradas de re-review declaradas");
     await expect(panel(page).getByRole("button", { name: "Abrir revisión anterior" })).toHaveCount(0);
   });
+
+  test("un verified desconocido de una revisión anterior no se presenta como negativo", async ({ page }) => {
+    await abrir(page, conCambios((v) => {
+      v.review.previous_reviews = [{ review_id: "CR-0000000000000000bbbb", reference: "archivo/anterior", verified: "unknown" }];
+    }));
+    await pestana(page, "Seguimiento").click();
+    const fila = panel(page).locator("li", { hasText: "CR-0000000000000000bbbb" });
+    await expect(fila).toContainText('verificación en estado desconocido (valor original: "unknown")');
+    await expect(fila).not.toContainText("no verificada por la fuente");
+    const json = fila.locator("details");
+    await json.locator("summary").click();
+    await expect(json).toContainText('"verified": "unknown"');
+  });
 });
 
 test.describe("Archivo", () => {

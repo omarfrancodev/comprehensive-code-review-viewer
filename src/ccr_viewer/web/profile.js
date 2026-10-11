@@ -15,6 +15,8 @@ import {
   ESTADOS_COMPATIBILIDAD,
   ESTADOS_LIMPIEZA,
   VEREDICTOS,
+  banderaDeclarada,
+  originalDeclarado,
   valorLegible,
 } from "./estados.js";
 
@@ -75,6 +77,18 @@ function detallesOriginales(entradas) {
   return detalles;
 }
 
+/**
+ * Texto de una bandera declarada: solo `true`/`false` se traducen; una forma
+ * desconocida conserva su valor original y nunca se presenta como negativa.
+ */
+function textoBandera(valor, { si, no, ausente, sujeto }) {
+  const estado = banderaDeclarada(valor);
+  if (estado === "si") return si;
+  if (estado === "no") return no;
+  if (estado === "ausente") return ausente;
+  return `${sujeto} en estado desconocido (valor original: ${originalDeclarado(valor)})`;
+}
+
 function coberturaAreas(coverage) {
   const areas = Array.isArray(coverage?.areas) ? coverage.areas : [];
   if (areas.length === 0) return null;
@@ -85,7 +99,14 @@ function coberturaAreas(coverage) {
     titulo.append(elemento("span", { texto: `${area.area} — ` }), valorLegible(area.status, ESTADOS_COBERTURA));
     item.append(titulo);
     item.append(elemento("span", { texto: ` ${area.details ?? ""}` }));
-    if (area.material) item.append(elemento("span", { clase: "marca marca--material", texto: " material" }));
+    const material = banderaDeclarada(area.material);
+    if (material === "si") item.append(elemento("span", { clase: "marca marca--material", texto: " material" }));
+    else if (material === "desconocido") {
+      item.append(elemento("span", {
+        clase: "nota",
+        texto: ` materialidad en estado desconocido (valor original: ${originalDeclarado(area.material)})`,
+      }));
+    }
     if (Array.isArray(area.finding_ids) && area.finding_ids.length > 0) {
       item.append(elemento("span", { clase: "nota", texto: ` referencias: ${area.finding_ids.join(", ")}` }));
     }
@@ -144,9 +165,12 @@ export function renderProfile(contenedor, view) {
   for (const autor of review?.change_authors ?? []) {
     autores.append(
       elemento("li", {
-        texto: `${autor.name ?? "Sin nombre"}${autor.username ? ` (@${autor.username})` : ""}${
-          autor.verified ? " · cuenta verificada" : " · identidad no verificada"
-        }`,
+        texto: `${autor.name ?? "Sin nombre"}${autor.username ? ` (@${autor.username})` : ""} · ${textoBandera(autor.verified, {
+          si: "cuenta verificada",
+          no: "identidad no verificada",
+          ausente: "verificación no declarada",
+          sujeto: "verificación",
+        })}`,
       }),
     );
   }
@@ -155,9 +179,12 @@ export function renderProfile(contenedor, view) {
     seccion("Responsabilidad", [
       listaDefinitiva([
         campo("Responsable", review?.responsible?.name, {
-          nota: review?.responsible?.verified
-            ? "Cuenta verificada por la fuente."
-            : "Identidad declarada, no verificada.",
+          nota: textoBandera(review?.responsible?.verified, {
+            si: "Cuenta verificada por la fuente.",
+            no: "Identidad declarada, no verificada.",
+            ausente: "Verificación no declarada por la fuente.",
+            sujeto: "Verificación",
+          }),
         }),
         campo("Autores del cambio", autores.children.length > 0 ? autores : null, {
           textoVacio: "Sin autores del cambio registrados",
@@ -169,8 +196,17 @@ export function renderProfile(contenedor, view) {
 
   const marcas = elemento("ul", { clase: "marcas" });
   const coverage = review?.coverage ?? {};
-  if (coverage.stale) marcas.append(elemento("li", { clase: "marca marca--aviso", texto: "Revisión caducada" }));
-  if (coverage.adequate === false) marcas.append(elemento("li", { clase: "marca marca--aviso", texto: "Cobertura insuficiente" }));
+  // Solo un booleano declarado activa una marca; otra forma se muestra como desconocida.
+  const caducidad = banderaDeclarada(coverage.stale);
+  if (caducidad === "si") marcas.append(elemento("li", { clase: "marca marca--aviso", texto: "Revisión caducada" }));
+  else if (caducidad === "desconocido") {
+    marcas.append(elemento("li", { clase: "marca", texto: textoBandera(coverage.stale, { sujeto: "Caducidad" }) }));
+  }
+  const suficiencia = banderaDeclarada(coverage.adequate);
+  if (suficiencia === "no") marcas.append(elemento("li", { clase: "marca marca--aviso", texto: "Cobertura insuficiente" }));
+  else if (suficiencia === "desconocido") {
+    marcas.append(elemento("li", { clase: "marca", texto: textoBandera(coverage.adequate, { sujeto: "Suficiencia de la cobertura" }) }));
+  }
   if (view?.compatibility === "limited") marcas.append(elemento("li", { clase: "marca marca--aviso", texto: "Compatibilidad limitada" }));
   if (closure?.cleanup === "pending") marcas.append(elemento("li", { clase: "marca marca--aviso", texto: "Limpieza pendiente" }));
 
