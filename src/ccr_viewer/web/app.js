@@ -1,11 +1,18 @@
 /**
  * Punto de entrada: shell, sesión, biblioteca, pestañas de la revisión,
  * navegación local (`?run&tab&event`), preferencias y avisos en vivo.
+ *
+ * Navegación desde el inspector (§9): hallazgos y checks locales abren su
+ * vista con destino; la evidencia abre Documentos con la clave opaca del
+ * archivo; otra corrida se abre con una acción explícita que guarda en memoria
+ * un único contexto previo `{run, tab, eventId}` para «Volver a la revisión
+ * anterior». La dirección sigue limitada a `?run&tab&event`.
  */
 
 import {
   bootstrapSession,
   getConfig,
+  getFiles,
   getRun,
   getRuns,
   getTrace,
@@ -82,12 +89,18 @@ let historialListo = false;
 let errorRevision = null;
 // Fallo al leer `/api/config`: se muestra en la etiqueta y el diálogo de la raíz.
 let errorConfiguracion = null;
+// Contexto previo a abrir otra corrida desde una relación: una sola entrada,
+// solo en memoria, válida mientras la revisión abierta sea la de destino.
+let contextoAnterior = null;
+let retornoPintado = null;
 
 const raizDocumento = document.documentElement;
 const shell = mountShell(document);
 const { library: bibliotecaNodo, content: revisionNodo, tabs: barraNodo, header: cabeceraNodo } = shell.regions;
 const raizBoton = document.getElementById("raiz");
 const temaNodo = document.getElementById("tema");
+const retornoNodo = elemento("div", { clase: "retorno-contexto", atributos: { "data-part": "return-context", hidden: true } });
+cabeceraNodo.after(retornoNodo);
 
 const store = createStore({ prefs: loadPrefs() });
 const biblioteca = mountLibrary(bibliotecaNodo, { getState: store.getState, dispatch: store.dispatch });
@@ -220,6 +233,100 @@ function crearPresentador(modelo, vista) {
   return control;
 }
 
+/** Lleva el foco a la pestaña activa si la navegación lo dejó en el cuerpo. */
+function recuperarFoco() {
+  queueMicrotask(() => {
+    const activo = document.activeElement;
+    if (activo && activo !== document.body) return;
+    document.getElementById(`pestana-${store.getState().tab}`)?.focus();
+  });
+}
+
+/** Pestaña que presenta un destino local (`E…`, `F…`, `C…`). */
+function pestanaDeDestino(id) {
+  if (id.startsWith("F")) return "hallazgos";
+  if (id.startsWith("C")) return "validacion";
+  return "trazabilidad";
+}
+
+/**
+ * Abre otra corrida resuelta por el backend. Guarda el contexto actual (una
+ * entrada) para volver; nunca busca corridas por parecido: `runKey` es la
+ * clave opaca que declaró la resolución.
+ */
+function abrirOtraCorrida({ runKey, id, label }) {
+  const estado = store.getState();
+  if (typeof runKey !== "string" || !runKey || typeof id !== "string" || runKey === estado.selectedRun) return;
+  contextoAnterior = {
+    run: estado.selectedRun,
+    tab: estado.tab,
+    eventId: estado.selectedEventId,
+    etiqueta: estado.view?.summary?.source_review_id ?? null,
+    destino: runKey,
+  };
+  presentador?.pause("run");
+  const tab = pestanaDeDestino(id);
+  if (tab === "trazabilidad") {
+    store.dispatch({ type: "selectRun", key: runKey, tab, eventId: id });
+  } else {
+    store.dispatch({ type: "selectRun", key: runKey, tab });
+    store.dispatch({ type: "openTarget", tab, id });
+  }
+  shell.announce(`Se abrió la revisión ${label ?? runKey} en ${id}. «Volver a la revisión anterior» restaura el contexto previo.`);
+  recuperarFoco();
+}
+
+/** Destinos del inspector que no son un hito de la traza actual. */
+function navegarDesdeInspector(destino) {
+  const estado = store.getState();
+  if (!destino || !estado.selectedRun) return;
+  if (destino.scope === "finding" || destino.scope === "check") {
+    store.dispatch({ type: "openTarget", tab: destino.scope === "finding" ? "hallazgos" : "validacion", id: destino.id });
+    recuperarFoco();
+  } else if (destino.scope === "file" && typeof destino.fileKey === "string" && destino.fileKey) {
+    // Documentos restaura el archivo recordado: se pide por su clave opaca.
+    const memoria = memoriaDe(estado.selectedRun);
+    memoria.documentos = { ...(memoria.documentos ?? {}), clave: destino.fileKey };
+    store.dispatch({ type: "setTab", tab: "documentos" });
+    recuperarFoco();
+  } else if (destino.scope === "run") {
+    abrirOtraCorrida(destino);
+  }
+}
+
+function volverAlContextoAnterior() {
+  const previo = contextoAnterior;
+  if (!previo) return;
+  contextoAnterior = null;
+  presentador?.pause("run");
+  store.dispatch({ type: "selectRun", key: previo.run, tab: previo.tab, eventId: previo.eventId ?? null });
+  document.getElementById(`pestana-${store.getState().tab}`)?.focus();
+}
+
+/** Aviso con «Volver a la revisión anterior» mientras se esté en la corrida de destino. */
+function pintarRetorno(estado) {
+  if (contextoAnterior && estado.selectedRun !== contextoAnterior.destino) contextoAnterior = null;
+  if (retornoPintado === contextoAnterior) return;
+  retornoPintado = contextoAnterior;
+  if (!contextoAnterior) {
+    retornoNodo.hidden = true;
+    retornoNodo.replaceChildren();
+    return;
+  }
+  const { etiqueta, tab, eventId } = contextoAnterior;
+  const pestana = PESTANAS.find((p) => p.id === tab)?.etiqueta ?? tab;
+  const boton = elemento("button", { texto: "Volver a la revisión anterior", atributos: { type: "button" } });
+  boton.addEventListener("click", volverAlContextoAnterior);
+  retornoNodo.replaceChildren(
+    elemento("p", {
+      clase: "nota",
+      texto: `Llegaste desde ${etiqueta ?? "otra revisión"} · ${pestana}${eventId ? ` · ${eventId}` : ""}.`,
+    }),
+    boton,
+  );
+  retornoNodo.hidden = false;
+}
+
 /** Selección explícita desde el explorador: el store (y la URL) la reflejan. */
 function alSeleccionarHito(eventId) {
   if (eventId !== store.getState().selectedEventId) store.dispatch({ type: "selectEvent", eventId });
@@ -342,6 +449,9 @@ function dibujarRevision() {
             onSelect: alSeleccionarHito,
             inspector: shell.regions.inspector,
             openDialog: abrirDialogo,
+            // El inventario solo se pide si un hito declara evidencia.
+            inventory: () => getFiles(clave),
+            onNavigate: navegarDesdeInspector,
           }),
         };
         if (avisoHito) revisionNodo.prepend(elemento("p", { clase: "estado estado--aviso", texto: avisoHito }));
@@ -425,6 +535,7 @@ function dibujar() {
   // `clearTarget` y ese redibujo anidado no debe repetir el de la vista.
   renderedState = estado;
   biblioteca.update(estado);
+  pintarRetorno(estado);
   if (estado.config && previo?.config !== estado.config) {
     raizBoton.querySelector(".raiz-etiqueta").textContent = nombreBase(estado.config.root);
   }

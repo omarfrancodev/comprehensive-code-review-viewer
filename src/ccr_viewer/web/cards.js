@@ -18,10 +18,15 @@
  * Mientras las acciones están ocultas, solo sus botones (`data-part="action-buttons"`)
  * son `inert`: tipo, estado original, hora y «Recibido» siguen en el árbol de
  * accesibilidad, seleccionables y localizables durante todo el revelado.
+ *
+ * Acciones (§6.3): «Relaciones (n)» y «Evidencia (n)» solo cuando el hito las
+ * declara (coste de teclado acotado); seleccionan el hito y despliegan su
+ * sección del inspector sin mover el foco. «Copiar resumen» sigue disponible.
  */
 
 import { botonAccion, elemento, fijarInactivo, reconciliarHijos, textoDe } from "./dom.js";
 import { actorKey, actorLabel } from "./present.js";
+import { evidenciasDe } from "./relations.js";
 import { nodoTiempo } from "./timeline.js";
 
 /** Estado visual de la tarjeta `id` según el presentador. */
@@ -85,6 +90,21 @@ function fijarRevelado(entrada, etapas) {
   }
 }
 
+/** Relaciones (salientes y entrantes) y evidencias que declara el hito. */
+function conteosDe(modelo, evento) {
+  const { outgoing, incoming } = modelo.relationsOf(evento.event_id);
+  return { relaciones: outgoing.length + incoming.length, evidencia: evidenciasDe(evento).length };
+}
+
+function accionDeTarjeta(texto, id, alPulsar) {
+  const boton = elemento("button", { clase: "tarjeta-accion", atributos: { type: "button" } });
+  boton.append(elemento("span", { texto }), elemento("span", { clase: "solo-lectores", texto: ` de ${id}` }));
+  boton.addEventListener("click", alPulsar);
+  return boton;
+}
+
+const firmaDe = (conteos) => `${conteos.relaciones}/${conteos.evidencia}`;
+
 function separador() {
   return elemento("span", { clase: "tarjeta-separador", texto: " · " });
 }
@@ -94,7 +114,7 @@ function separador() {
  * solo reconstruye las que cambiaron en la fuente; `sincronizar` actualiza
  * estado y selección sin tocar el resto.
  */
-export function crearTarjetas({ onSelect, onPagina, onDesplazar }) {
+export function crearTarjetas({ onSelect, onPagina, onDesplazar, onAccion }) {
   const raiz = elemento("div", { clase: "explorador-tarjetas", atributos: { "data-part": "cards" } });
   const cabecera = elemento("div", { clase: "tarjetas-cabecera" });
   const rango = elemento("p", { clase: "tarjetas-rango" });
@@ -113,7 +133,7 @@ export function crearTarjetas({ onSelect, onPagina, onDesplazar }) {
 
   const cache = new Map();
 
-  function llenar(entrada, evento, etiqueta) {
+  function llenar(entrada, evento, etiqueta, conteos) {
     const id = evento.event_id;
     const boton = elemento("button", { clase: "tarjeta-boton", atributos: { type: "button" } });
     const meta = elemento("span", { clase: "tarjeta-meta", atributos: { "data-part": "header" } });
@@ -144,6 +164,12 @@ export function crearTarjetas({ onSelect, onPagina, onDesplazar }) {
     );
     // Solo los elementos interactivos del pie: es lo único que se vuelve `inert`.
     const botones = elemento("span", { clase: "tarjeta-botones", atributos: { "data-part": "action-buttons" } });
+    if (conteos.relaciones > 0) {
+      botones.append(accionDeTarjeta(`Relaciones (${conteos.relaciones})`, id, () => onAccion?.(id, "relaciones")));
+    }
+    if (conteos.evidencia > 0) {
+      botones.append(accionDeTarjeta(`Evidencia (${conteos.evidencia})`, id, () => onAccion?.(id, "evidencia")));
+    }
     if (textoResumen !== null) {
       const rotulo = elemento("span", { texto: "Copiar resumen" });
       const copiar = elemento("button", { clase: "tarjeta-copiar", atributos: { type: "button" } });
@@ -160,7 +186,7 @@ export function crearTarjetas({ onSelect, onPagina, onDesplazar }) {
     if (conFoco) boton.focus({ preventScroll: true });
     // Nodos nuevos: `sincronizar` (en la misma tarea) vuelve a aplicar el revelado vigente.
     if (entrada.revelado) for (const [, propiedad] of ETAPAS) entrada.li.style.removeProperty(propiedad);
-    Object.assign(entrada, { boton, botones, resumen, recibido, etiqueta, revelado: null });
+    Object.assign(entrada, { boton, botones, resumen, recibido, etiqueta, conteos: firmaDe(conteos), revelado: null });
   }
 
   function sincronizar(actual, modelo) {
@@ -188,13 +214,14 @@ export function crearTarjetas({ onSelect, onPagina, onDesplazar }) {
         const evento = modelo.byId.get(id);
         const clave = actorKey(evento.actor);
         const etiqueta = etiquetas.get(clave) ?? actorLabel(evento.actor);
+        const conteos = conteosDe(modelo, evento);
         let entrada = cache.get(id);
         if (!entrada) {
           entrada = { li: elemento("li", { clase: "tarjeta", atributos: { "data-event-id": id } }) };
-          llenar(entrada, evento, etiqueta);
+          llenar(entrada, evento, etiqueta, conteos);
           cache.set(id, entrada);
-        } else if (cambiados.has(id) || entrada.etiqueta !== etiqueta) {
-          llenar(entrada, evento, etiqueta);
+        } else if (cambiados.has(id) || entrada.etiqueta !== etiqueta || entrada.conteos !== firmaDe(conteos)) {
+          llenar(entrada, evento, etiqueta, conteos);
         }
         vigentes.add(id);
         nodos.push(entrada.li);

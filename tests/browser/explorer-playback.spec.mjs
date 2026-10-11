@@ -340,7 +340,7 @@ test.describe("revelado progresivo del elemento", () => {
     const cursor = segundos(await page.locator('[data-part="cursor"]').evaluate((n) => getComputedStyle(n).transitionDuration));
     expect(cursor).toBeGreaterThan(0);
     expect(cursor).toBeLessThanOrEqual(0.42);
-    const inspector = segundos(await page.locator('#inspector [data-part="inspector"]').evaluate((n) => getComputedStyle(n).transitionDuration));
+    const inspector = segundos(await page.locator('#inspector [data-part="inspector-body"]').evaluate((n) => getComputedStyle(n).transitionDuration));
     expect(inspector).toBeGreaterThanOrEqual(0.16);
     expect(inspector).toBeLessThanOrEqual(0.18);
     await boton(page, "Reiniciar").click();

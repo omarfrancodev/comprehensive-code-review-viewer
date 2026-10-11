@@ -1,6 +1,6 @@
 /*
  * Explorador de trazabilidad (§6): franja de actores, timeline por pasos de
- * secuencia, controles, búsqueda, tarjetas e inspector mínimo. Solo consume
+ * secuencia, controles, búsqueda, tarjetas e inspector. Solo consume
  * tokens de tokens.css. Las propiedades dinámicas (`--marcadores`, `--cursor`,
  * `--etapa-*`) se escriben con `style.setProperty`, nunca con estilos en línea.
  * El movimiento (cursor, inspector, revelado) se anula por completo con
@@ -588,21 +588,25 @@ button[aria-disabled="true"] {
   }
 }
 
-/* --- Inspector mínimo ---------------------------------------------------- */
+/* --- Inspector (§6.3, §9) ------------------------------------------------- */
 
-.inspector-minimo {
+.inspector,
+.inspector-cuerpo {
   display: grid;
-  gap: var(--espacio-2);
-  transition: opacity var(--duracion-inspector) ease-out;
+  gap: var(--espacio-3);
+  min-width: 0;
 }
 
-/* El contenido nuevo del inspector aparece con una transición corta (160–180 ms); nunca se «escribe». */
-.inspector-minimo > * {
+/*
+ * Cada hito nuevo entra en un `.inspector-cuerpo` nuevo: este es el nodo que
+ * transiciona (160–180 ms) desde `@starting-style`; nunca se «escribe».
+ */
+.inspector-cuerpo {
   transition: opacity var(--duracion-inspector) ease-out, transform var(--duracion-inspector) ease-out;
 }
 
 @starting-style {
-  .inspector-minimo > * {
+  .inspector-cuerpo {
     opacity: 0;
     transform: translateY(2px);
   }
@@ -626,23 +630,149 @@ button[aria-disabled="true"] {
 
 .inspector-resumen {
   margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.inspector-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--espacio-2);
+}
+
+.inspector-accion {
+  font-size: var(--tam-meta);
+}
+
+.inspector-copia-estado {
+  margin: var(--espacio-1) 0 0;
+  color: var(--texto-suave);
+  font-size: var(--tam-meta);
+}
+
+.inspector-copia-estado:empty {
+  margin: 0;
 }
 
 .inspector-campos .campo {
   grid-template-columns: minmax(6rem, 8rem) minmax(0, 1fr);
 }
 
-.inspector-relaciones h3 {
+.inspector-campos dd,
+.inspector code {
+  overflow-wrap: anywhere;
+}
+
+.inspector-seccion h3 {
   margin: 0 0 var(--espacio-1);
   font-size: var(--tam-meta);
 }
 
-.inspector-relacion {
+.inspector-detalle > summary {
+  min-height: 24px;
+  cursor: pointer;
+  font-size: var(--tam-meta);
+  font-weight: 600;
+}
+
+.inspector-detalle[open] > summary {
+  margin-bottom: var(--espacio-2);
+}
+
+.inspector-subtitulo,
+.relaciones-origen {
+  margin: var(--espacio-2) 0 var(--espacio-1);
+  font-size: var(--tam-meta);
+  font-weight: 600;
+}
+
+.inspector-relaciones-lista,
+.inspector-evidencia-lista {
+  display: grid;
+  gap: var(--espacio-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inspector-relacion,
+.inspector-evidencia {
+  display: grid;
+  gap: var(--espacio-1);
+  padding: var(--espacio-2);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-1);
   overflow-wrap: anywhere;
 }
 
-.inspector-relacion:not([data-relation-status="resolved"]) {
-  color: var(--error);
+/* Lo que no navega se distingue por texto y borde, no solo por color. */
+.inspector-relacion:not([data-relation-status="resolved"]),
+.inspector-evidencia[data-evidence-code] {
+  border-style: dashed;
+}
+
+.relacion-linea,
+.relacion-estado,
+.relacion-motivo,
+.evidencia-motivo {
+  margin: 0;
+}
+
+.relacion-tipo {
+  font-weight: 600;
+}
+
+.relacion-estado,
+.relacion-motivo,
+.evidencia-motivo {
+  color: var(--texto-suave);
+  font-size: var(--tam-meta);
+}
+
+.relacion-ciclo {
+  color: var(--aviso);
+  font-weight: 600;
+}
+
+.inspector-relacion .inspector-accion,
+.inspector-evidencia .inspector-accion {
+  justify-self: start;
+}
+
+.inspector-orden-temporal {
+  padding-top: var(--espacio-2);
+  border-top: 1px solid var(--borde);
+}
+
+.inspector-orden-ids {
+  margin: 0;
+  font-size: var(--tam-meta);
+}
+
+/* Acciones de relaciones/evidencia de la tarjeta (inertes durante el revelado). */
+.tarjeta-accion {
+  font-size: var(--tam-meta);
+}
+
+/* Retorno a la revisión anterior tras abrir otra corrida desde una relación. */
+.retorno-contexto {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espacio-2) var(--espacio-3);
+  margin-bottom: var(--espacio-2);
+  padding: var(--espacio-2) var(--espacio-3);
+  border: 1px solid var(--borde);
+  border-left: 4px solid var(--acento);
+  border-radius: var(--radio-1);
+  background: var(--superficie);
+}
+
+.retorno-contexto[hidden] {
+  display: none;
+}
+
+.retorno-contexto .nota {
+  margin: 0;
 }
 
 /* --- Táctil y una columna ------------------------------------------------- */
@@ -678,8 +808,8 @@ button[aria-disabled="true"] {
 :root[data-motion="reduce"] .explorador *,
 :root[data-motion="reduce"] .explorador *::before,
 :root[data-motion="reduce"] .explorador *::after,
-:root[data-motion="reduce"] .inspector-minimo,
-:root[data-motion="reduce"] .inspector-minimo * {
+:root[data-motion="reduce"] .inspector,
+:root[data-motion="reduce"] .inspector * {
   animation: none !important;
   transition: none !important;
 }
@@ -700,8 +830,8 @@ button[aria-disabled="true"] {
   .explorador *,
   .explorador *::before,
   .explorador *::after,
-  .inspector-minimo,
-  .inspector-minimo * {
+  .inspector,
+  .inspector * {
     animation: none !important;
     transition: none !important;
   }

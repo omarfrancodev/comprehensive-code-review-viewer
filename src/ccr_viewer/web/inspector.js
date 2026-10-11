@@ -1,0 +1,501 @@
+/**
+ * Inspector del hito seleccionado (§6.3, §9, §11).
+ *
+ * Presenta el original completo: ID, secuencia, tipo y estado, resumen,
+ * actor/registrador/ejecutor diferenciados, procedencia, autoridad, tiempos
+ * (hora local, UTC y original visibles, con su base), relaciones navegables,
+ * evidencia por claves del inventario y el JSON original desplegable. Copiar
+ * usa siempre el valor completo. A nivel de traza conserva, como dato en un
+ * detalle, el orden temporal declarado por la fuente (nunca como lista paralela
+ * de tarjetas).
+ *
+ * Seleccionar nunca mueve el foco al inspector: solo si el foco ya estaba
+ * dentro y su nodo desaparece, pasa al encabezado del hito nuevo. Todo texto
+ * del archivo se escribe con `textContent`.
+ */
+
+import { etiquetasDeActores } from "./actors.js";
+import { campo, elemento, textoDe } from "./dom.js";
+import { actorKey, actorLabel, basisLabel, formatInstant } from "./present.js";
+import { MOTIVOS_EVIDENCIA, classifyRelation, evidenceLink, evidenciasDe } from "./relations.js";
+
+const ESTADOS_RELACION = {
+  resolved: "resuelta",
+  dangling: "colgante",
+  unresolved: "sin resolver",
+  ambiguous: "ambigua",
+  unavailable: "no disponible",
+  cyclic: "ciclo",
+};
+
+const EVENTO_LOCAL = /^E[0-9]{6}$/;
+
+/** Identidad declarada; ausente se nombra como tal, sin sustituirla por otra. */
+function identidadDe(valor, ausente) {
+  if (actorKey(valor) === "∅") return ausente;
+  const etiqueta = actorLabel(valor);
+  const proveedor = typeof valor?.provider_id === "string" ? valor.provider_id.trim() : "";
+  return proveedor && proveedor !== etiqueta ? `${etiqueta} (${proveedor})` : etiqueta;
+}
+
+function estadoDeRelacion(estado) {
+  if (typeof estado === "string" && Object.hasOwn(ESTADOS_RELACION, estado)) return `${ESTADOS_RELACION[estado]} (${estado})`;
+  return typeof estado === "string" && estado ? estado : "sin estado declarado";
+}
+
+function codigo(texto, clase) {
+  return elemento("code", { clase, texto });
+}
+
+/** Copia `valor` completo; un fallo del portapapeles se avisa sin lanzar. */
+async function copiar(valor, estado, nombre) {
+  try {
+    await globalThis.navigator.clipboard.writeText(valor);
+    estado.textContent = `${nombre} copiado.`;
+  } catch {
+    estado.textContent = `No se pudo copiar: el portapapeles no está disponible. ${nombre} sigue visible en el inspector para seleccionarlo.`;
+  }
+}
+
+/**
+ * Monta el inspector en `container` (región del shell).
+ *
+ * - `getModel()`: modelo de traza vigente; `presenter.state().selectedId` da la selección.
+ * - `runKey`: clave opaca de la corrida actual (relaciones locales frente a otras corridas).
+ * - `inventory`: lista de archivos, promesa o función que la devuelve; se pide
+ *   solo cuando un hito declara evidencia y una vez por modelo.
+ * - `onNavigate(destino)`: `{scope:"event"|"finding"|"check", id}`,
+ *   `{scope:"run", runKey, id, label}` o `{scope:"file", fileKey, relativePath}`.
+ *
+ * Devuelve `update()` (refleja modelo y selección), `expand(seccion)`
+ * (`"relaciones"`/`"evidencia"`) y `destroy()`.
+ */
+export function mountInspector(container, { getModel, presenter, runKey, inventory, onNavigate } = {}) {
+  const raiz = elemento("div", { clase: "inspector", atributos: { "data-part": "inspector", "data-event-id": "" } });
+  const rotulo = elemento("p", { clase: "inspector-rotulo", texto: "Hito seleccionado" });
+  let cuerpo = elemento("div", { clase: "inspector-cuerpo", atributos: { "data-part": "inspector-body" } });
+  let orden = null;
+  raiz.append(rotulo, cuerpo);
+  container.replaceChildren(raiz);
+  container.hidden = false;
+
+  // Secciones desplegadas por la persona: se conservan entre selecciones.
+  const abiertas = { relaciones: false, evidencia: false };
+  let inventario = { modelo: null, estado: "idle", archivos: null, error: null };
+  let pintado = { modelo: undefined, id: undefined, evento: undefined, inventario: undefined };
+  let etiquetas = { modelo: null, mapa: new Map() };
+  let destruido = false;
+
+  const navegar = (destino) => {
+    if (!destruido) onNavigate?.(destino);
+  };
+
+  function etiquetasDe(modelo) {
+    if (etiquetas.modelo !== modelo) etiquetas = { modelo, mapa: etiquetasDeActores(modelo?.actors ?? []) };
+    return etiquetas.mapa;
+  }
+
+  // --- Inventario (solo para evidencia) ------------------------------------
+
+  function asegurarInventario(modelo) {
+    if (inventario.modelo === modelo && inventario.estado !== "idle") return;
+    const actual = { modelo, estado: "loading", archivos: null, error: null };
+    inventario = actual;
+    const terminar = (estado, archivos, error) => {
+      if (destruido || inventario !== actual) return;
+      inventario = { ...actual, estado, archivos, error };
+      update();
+    };
+    let fuente;
+    try {
+      fuente = typeof inventory === "function" ? inventory() : inventory;
+    } catch (error) {
+      fuente = Promise.reject(error);
+    }
+    if (Array.isArray(fuente)) {
+      inventario = { ...actual, estado: "ready", archivos: fuente };
+      return;
+    }
+    if (!fuente || typeof fuente.then !== "function") {
+      inventario = { ...actual, estado: "error", error: "el inventario no está disponible" };
+      return;
+    }
+    fuente.then(
+      (archivos) => (Array.isArray(archivos)
+        ? terminar("ready", archivos, null)
+        : terminar("error", null, "la respuesta del inventario no es una lista")),
+      (error) => terminar("error", null, textoDe(error?.message) ?? "error desconocido"),
+    );
+  }
+
+  // --- Secciones -------------------------------------------------------------
+
+  function accion(texto, clave, alPulsar, extra) {
+    const boton = elemento("button", { clase: "inspector-accion", atributos: { type: "button", "data-accion": clave } });
+    boton.append(elemento("span", { texto }));
+    if (extra) boton.append(elemento("span", { clase: "solo-lectores", texto: extra }));
+    boton.addEventListener("click", alPulsar);
+    return boton;
+  }
+
+  function filaCampo(nombre, etiqueta, valor, opciones) {
+    const fila = campo(etiqueta, valor, opciones);
+    fila.setAttribute("data-campo", nombre);
+    return fila;
+  }
+
+  function seccionCopiar(id, evento) {
+    const bloque = elemento("div", { clase: "inspector-copiar" });
+    const estado = elemento("p", { clase: "inspector-copia-estado", atributos: { role: "status", "data-part": "copy-status" } });
+    const botones = elemento("div", { clase: "inspector-acciones" });
+    botones.append(accion("Copiar ID", "copiar-id", () => copiar(id, estado, "El ID")));
+    const resumen = typeof evento.summary === "string" && evento.summary !== "" ? evento.summary : null;
+    if (resumen !== null) botones.append(accion("Copiar resumen", "copiar-resumen", () => copiar(resumen, estado, "El resumen")));
+    const json = JSON.stringify(evento, null, 2) ?? String(evento);
+    botones.append(accion("Copiar JSON", "copiar-json", () => copiar(json, estado, "El JSON original")));
+    bloque.append(botones, estado);
+    return bloque;
+  }
+
+  function seccionCampos(evento, modelo) {
+    const datos = elemento("dl", { clase: "campos inspector-campos" });
+    const vacio = { textoVacio: "No declarado" };
+    const sinActor = actorKey(evento.actor) === "∅";
+    const actor = sinActor ? "Actor no declarado" : (etiquetasDe(modelo).get(actorKey(evento.actor)) ?? actorLabel(evento.actor));
+    const filaActor = filaCampo("actor", "Actor", actor);
+    if (sinActor) {
+      filaActor.querySelector("dd").append(elemento("p", {
+        clase: "nota",
+        texto: "La fuente no declara actor para este hito; no se sustituye por el registrador ni por el ejecutor.",
+        atributos: { "data-vacio": "actor" },
+      }));
+    } else {
+      const completa = identidadDe(evento.actor, "");
+      if (completa && completa !== actor) filaActor.querySelector("dd").append(elemento("p", { clase: "nota", texto: `Identidad declarada: ${completa}` }));
+    }
+    const procedencia = evento.provenance;
+    let textoProcedencia = null;
+    if (procedencia && typeof procedencia === "object" && !Array.isArray(procedencia)) {
+      textoProcedencia = `${textoDe(procedencia.kind) ?? "tipo no declarado"} · ${textoDe(procedencia.source) ?? "origen no declarado"}`;
+    } else {
+      textoProcedencia = textoDe(procedencia);
+    }
+    const autoridad = textoDe(evento.authority);
+    datos.append(
+      filaCampo("secuencia", "Secuencia", textoDe(evento.sequence), vacio),
+      filaCampo("tipo", "Tipo", textoDe(evento.kind), vacio),
+      filaCampo("estado", "Estado original", textoDe(evento.status), vacio),
+      filaActor,
+      filaCampo("registrador", "Registrador", identidadDe(evento.recorder, "Registrador no declarado")),
+      filaCampo("ejecutor", "Ejecutor", identidadDe(evento.executor, "Ejecutor no declarado")),
+      filaCampo("procedencia", "Procedencia", textoProcedencia, { textoVacio: "Procedencia no declarada" }),
+      filaCampo("autoridad", "Autoridad", autoridad === null ? null : codigo(autoridad, "inspector-valor-json"), { textoVacio: "Autoridad no declarada" }),
+    );
+    return datos;
+  }
+
+  function filaTiempo(nombre, etiqueta, valor) {
+    const fila = campo(etiqueta, valor, { textoVacio: "No declarado" });
+    fila.querySelector("dd").setAttribute("data-tiempo", nombre);
+    return fila;
+  }
+
+  function seccionTiempo(evento) {
+    const bloque = elemento("section", { clase: "inspector-seccion", atributos: { "data-part": "inspector-time" } });
+    bloque.append(elemento("h3", { texto: "Tiempo" }));
+    const instante = formatInstant(evento.temporal_at);
+    const datos = elemento("dl", { clase: "campos inspector-campos" });
+    datos.append(filaTiempo("base", "Base temporal", basisLabel(evento.temporal_basis)));
+    if (instante.original === null) {
+      bloque.append(elemento("p", {
+        clase: "estado",
+        texto: "Este hito no declara hora; se ubica solo por su secuencia y no se fabrica un instante.",
+        atributos: { "data-vacio": "tiempo" },
+      }));
+    } else if (instante.local === null) {
+      datos.append(
+        filaTiempo("local", "Hora local", elemento("span", { clase: "valor--desconocido", texto: "Sin interpretar" })),
+        filaTiempo("original", "Original", codigo(instante.original)),
+      );
+    } else {
+      datos.append(
+        filaTiempo("local", "Hora local", elemento("time", { texto: instante.local, atributos: { datetime: instante.original } })),
+        filaTiempo("utc", "UTC", codigo(instante.utc)),
+        filaTiempo("original", "Original", codigo(instante.original)),
+      );
+    }
+    const ocurrencia = textoDe(evento.occurred_at);
+    const registro = textoDe(evento.recorded_at);
+    datos.append(
+      filaTiempo("ocurrencia", "Ocurrencia declarada", ocurrencia === null ? null : codigo(ocurrencia)),
+      filaTiempo("registro", "Registro", registro === null ? null : codigo(registro)),
+    );
+    bloque.append(datos);
+    return bloque;
+  }
+
+  function detalle(seccion, parte, titulo) {
+    const detalles = elemento("details", { clase: "inspector-detalle", atributos: { "data-part": parte, open: abiertas[seccion] } });
+    detalles.append(elemento("summary", { texto: titulo, atributos: { "data-accion": `sumario-${seccion}` } }));
+    detalles.addEventListener("toggle", () => {
+      abiertas[seccion] = detalles.open;
+    });
+    return detalles;
+  }
+
+  /** Botón de navegación de una relación, o su explicación si no navega. */
+  function salidaDeRelacion(relacion, direccion, posicion, modelo) {
+    const clasificacion = classifyRelation(relacion, runKey);
+    const clave = `relacion-${direccion}-${posicion}`;
+    if (direccion === "incoming") {
+      // La otra punta es el origen, un hito de esta traza.
+      const origen = relacion.event_id;
+      if (clasificacion.navigable && clasificacion.scope === "event" && EVENTO_LOCAL.test(origen) && modelo.byId.has(origen)) {
+        return accion(`Abrir ${origen}`, clave, () => navegar({ scope: "event", id: origen }));
+      }
+    } else if (clasificacion.navigable) {
+      if (clasificacion.scope === "run") {
+        const revision = String(relacion.target).split("#")[0];
+        return accion(`Abrir revisión ${revision}`, clave, () => navegar({ scope: "run", runKey: clasificacion.runKey, id: clasificacion.id, label: revision }), ` (destino ${clasificacion.id})`);
+      }
+      if (clasificacion.scope !== "event" || modelo.byId.has(clasificacion.id)) {
+        return accion(`Abrir ${clasificacion.id}`, clave, () => navegar({ scope: clasificacion.scope, id: clasificacion.id }));
+      }
+      return elemento("p", { clase: "relacion-motivo", texto: "El hito de destino no está en el prefijo aceptado de esta traza; no se navega." });
+    }
+    const motivo = clasificacion.navigable
+      ? "El origen no está en el prefijo aceptado de esta traza; no se navega."
+      : clasificacion.reason;
+    return elemento("p", { clase: "relacion-motivo", texto: motivo });
+  }
+
+  function itemRelacion(relacion, direccion, posicion, modelo) {
+    const estado = typeof relacion.status === "string" ? relacion.status : "";
+    const li = elemento("li", {
+      clase: "inspector-relacion",
+      atributos: { "data-relation-status": estado, "data-relation-direction": direccion },
+    });
+    const linea = elemento("p", { clase: "relacion-linea" });
+    const destino = textoDe(relacion.raw) ?? textoDe(relacion.target) ?? "destino no declarado";
+    linea.append(
+      codigo(textoDe(relacion.event_id) ?? "origen no declarado", "relacion-extremo"),
+      " ",
+      elemento("span", { clase: "relacion-tipo", texto: textoDe(relacion.relation) ?? "vínculo no declarado" }),
+      " → ",
+      codigo(destino, "relacion-extremo"),
+    );
+    const meta = elemento("p", { clase: "relacion-estado", texto: `Resolución: ${estadoDeRelacion(relacion.status)}` });
+    if (estado === "cyclic") meta.prepend(elemento("span", { clase: "relacion-ciclo", texto: "Ciclo declarado" }), " · ");
+    li.append(linea, meta, salidaDeRelacion(relacion, direccion, posicion, modelo));
+    return li;
+  }
+
+  function seccionRelaciones(id, modelo) {
+    const { outgoing, incoming } = modelo.relationsOf(id);
+    const total = outgoing.length + incoming.length;
+    if (total === 0) {
+      return elemento("p", { clase: "estado", texto: "Este hito no declara relaciones.", atributos: { "data-vacio": "relaciones" } });
+    }
+    const detalles = detalle("relaciones", "relations", `Relaciones (${total})`);
+    const origen = elemento("p", { clase: "relaciones-origen", atributos: { "data-part": "relations-origin" } });
+    origen.append("Origen: ", codigo(id));
+    detalles.append(origen);
+    if (outgoing.length > 0) {
+      const lista = elemento("ul", { clase: "inspector-relaciones-lista", atributos: { "aria-label": `Destinos declarados por ${id}` } });
+      outgoing.forEach((relacion, i) => lista.append(itemRelacion(relacion, "outgoing", i, modelo)));
+      detalles.append(elemento("p", { clase: "inspector-subtitulo", texto: "Destinos declarados" }), lista);
+    }
+    if (incoming.length > 0) {
+      const lista = elemento("ul", { clase: "inspector-relaciones-lista", atributos: { "aria-label": `Hitos que apuntan a ${id}` } });
+      incoming.forEach((relacion, i) => lista.append(itemRelacion(relacion, "incoming", i, modelo)));
+      detalles.append(elemento("p", { clase: "inspector-subtitulo", texto: "Hitos que apuntan a este" }), lista);
+    }
+    return detalles;
+  }
+
+  function itemEvidencia(item, posicion) {
+    const sinInventario = evidenceLink(item, null);
+    let enlace = sinInventario;
+    let motivo = null;
+    if (sinInventario.code === "not_in_inventory") {
+      if (inventario.estado === "ready") enlace = evidenceLink(item, inventario.archivos);
+      else if (inventario.estado === "error") motivo = "Sin inventario: no se puede comprobar la coincidencia exacta; se muestra como texto.";
+      else motivo = "Comprobando el inventario de la corrida…";
+    }
+    if (enlace.kind === "file") {
+      const li = elemento("li", { clase: "inspector-evidencia", atributos: { "data-evidence-kind": "file" } });
+      li.append(
+        codigo(enlace.relativePath),
+        accion("Abrir en Documentos", `evidencia-${posicion}`, () => navegar({ scope: "file", fileKey: enlace.fileKey, relativePath: enlace.relativePath }), `: ${enlace.relativePath}`),
+      );
+      return li;
+    }
+    const pendiente = inventario.estado === "loading" && motivo !== null;
+    const li = elemento("li", {
+      clase: "inspector-evidencia",
+      atributos: pendiente ? { "data-evidence-pending": "" } : { "data-evidence-code": enlace.code },
+    });
+    li.append(
+      codigo(enlace.text),
+      elemento("p", { clase: "evidencia-motivo", texto: motivo ?? MOTIVOS_EVIDENCIA[enlace.code] }),
+    );
+    return li;
+  }
+
+  function seccionEvidencia(evento, modelo) {
+    const items = evidenciasDe(evento);
+    if (items.length === 0) {
+      return elemento("p", { clase: "estado", texto: "Este hito no declara evidencia.", atributos: { "data-vacio": "evidencia" } });
+    }
+    asegurarInventario(modelo);
+    const detalles = detalle("evidencia", "evidence", `Evidencia (${items.length})`);
+    detalles.append(elemento("p", {
+      clase: "nota",
+      texto: "Solo se enlazan archivos del inventario de esta corrida con la misma ruta relativa exacta.",
+    }));
+    if (inventario.estado === "error") {
+      detalles.append(elemento("p", {
+        clase: "estado estado--error",
+        texto: `No se pudo leer el inventario de la corrida: ${inventario.error}. La evidencia se muestra como texto, sin enlace.`,
+      }));
+    }
+    const lista = elemento("ul", { clase: "inspector-evidencia-lista" });
+    items.forEach((item, i) => lista.append(itemEvidencia(item, i)));
+    detalles.append(lista);
+    return detalles;
+  }
+
+  function seccionJson(evento) {
+    const detalles = elemento("details", { clase: "inspector-detalle", atributos: { "data-part": "original-json" } });
+    detalles.append(
+      elemento("summary", { texto: "JSON original del hito", atributos: { "data-accion": "sumario-json" } }),
+      elemento("p", { clase: "nota", texto: "Incluye los campos que el visor no presenta; nada se descarta." }),
+      elemento("pre", { clase: "codigo", texto: JSON.stringify(evento, null, 2) ?? String(evento) }),
+    );
+    return detalles;
+  }
+
+  function seccion(titulo, contenido) {
+    const bloque = elemento("section", { clase: "inspector-seccion" });
+    bloque.append(elemento("h3", { texto: titulo }), contenido);
+    return bloque;
+  }
+
+  function contenidoDe(modelo, id, evento) {
+    if (!evento) return [elemento("p", { clase: "estado", texto: "Sin hito seleccionado." })];
+    const resumen = textoDe(evento.summary);
+    return [
+      elemento("h2", { clase: "inspector-id", texto: id, atributos: { tabindex: "-1" } }),
+      seccionCopiar(id, evento),
+      elemento("p", { clase: resumen === null ? "inspector-resumen valor--desconocido" : "inspector-resumen", texto: resumen ?? "Sin resumen declarado." }),
+      seccionCampos(evento, modelo),
+      seccionTiempo(evento),
+      seccion("Relaciones", seccionRelaciones(id, modelo)),
+      seccion("Evidencia", seccionEvidencia(evento, modelo)),
+      seccionJson(evento),
+    ];
+  }
+
+  // --- Orden temporal declarado (nivel de traza) ----------------------------
+
+  function pintarOrden(modelo) {
+    const estabaAbierto = Boolean(orden?.open);
+    const nuevo = modelo && modelo.events.length > 0 ? elemento("details", {
+      clase: "inspector-detalle inspector-orden-temporal",
+      atributos: { "data-part": "temporal-order" },
+    }) : null;
+    if (nuevo) {
+      nuevo.append(elemento("summary", { texto: "Orden temporal declarado por la fuente", atributos: { "data-accion": "sumario-orden" } }));
+      let lleno = false;
+      const llenar = () => {
+        if (lleno) return;
+        lleno = true;
+        const ids = modelo.temporalOrder.filter((valor) => typeof valor === "string");
+        nuevo.append(elemento("p", {
+          clase: "nota",
+          texto: "Dato de la fuente (hora observada y luego secuencia). No sustituye el orden de secuencia de las tarjetas ni indica duración o dependencia.",
+        }));
+        if (ids.length === 0) {
+          nuevo.append(elemento("p", { clase: "estado", texto: "La fuente no declaró un orden temporal para esta traza." }));
+          return;
+        }
+        const linea = elemento("p", { clase: "inspector-orden-ids" });
+        linea.append(codigo(ids.join(" → ")));
+        nuevo.append(linea);
+      };
+      // Se rellena al desplegarlo: una traza de 10 000 hitos no lo pinta de antemano.
+      nuevo.addEventListener("toggle", () => {
+        if (nuevo.open) llenar();
+      });
+      if (estabaAbierto) {
+        llenar();
+        nuevo.open = true;
+      }
+    }
+    const conFoco = Boolean(orden?.contains(document.activeElement));
+    if (orden) orden.remove();
+    orden = nuevo;
+    if (orden) raiz.append(orden);
+    // Una recarga no deja el foco en `<body>` si estaba en este detalle.
+    if (conFoco) orden?.querySelector("summary")?.focus({ preventScroll: true });
+  }
+
+  // --- Actualización ---------------------------------------------------------
+
+  function update() {
+    if (destruido) return;
+    const modelo = typeof getModel === "function" ? getModel() : null;
+    const seleccion = presenter?.state?.().selectedId;
+    const evento = modelo && typeof seleccion === "string" ? modelo.byId.get(seleccion) : undefined;
+    const id = evento ? seleccion : null;
+    if (modelo !== pintado.modelo) pintarOrden(modelo);
+    // El estado del inventario solo cuenta si el hito declara evidencia.
+    const conEvidencia = Boolean(evento) && evidenciasDe(evento).length > 0;
+    const vigente = (estado) => (conEvidencia ? estado : null);
+    if (modelo === pintado.modelo && id === pintado.id && evento === pintado.evento && vigente(inventario) === pintado.inventario) return;
+    const mismoHito = id === pintado.id && pintado.modelo !== undefined;
+    pintado = { modelo, id, evento, inventario: null };
+    raiz.setAttribute("data-event-id", id ?? "");
+
+    const activo = document.activeElement;
+    const focoDentro = Boolean(activo && cuerpo.contains(activo));
+    const claveFoco = focoDentro ? activo.closest("[data-accion]")?.getAttribute("data-accion") : null;
+    const hijos = contenidoDe(modelo, id, evento);
+    // `contenidoDe` puede pedir el inventario: se registra su estado tras pintar.
+    pintado.inventario = vigente(inventario);
+    if (mismoHito) {
+      // Mismo hito (recarga o inventario): sin transición y conservando el foco.
+      cuerpo.replaceChildren(...hijos);
+    } else {
+      // Hito nuevo: un cuerpo nuevo entra con la transición corta del inspector.
+      const nuevo = elemento("div", { clase: "inspector-cuerpo", atributos: { "data-part": "inspector-body" } });
+      nuevo.append(...hijos);
+      cuerpo.replaceWith(nuevo);
+      cuerpo = nuevo;
+    }
+    if (focoDentro && (!document.activeElement || document.activeElement === document.body || !cuerpo.contains(document.activeElement))) {
+      const destino = (claveFoco && cuerpo.querySelector(`[data-accion="${claveFoco}"]`)) || cuerpo.querySelector(".inspector-id");
+      destino?.focus({ preventScroll: true });
+    }
+  }
+
+  return {
+    update,
+    /** Despliega una sección del hito actual (acción explícita); no mueve el foco. */
+    expand(seccionPedida) {
+      if (destruido || !Object.hasOwn(abiertas, seccionPedida)) return;
+      abiertas[seccionPedida] = true;
+      const parte = seccionPedida === "relaciones" ? "relations" : "evidence";
+      const detalles = cuerpo.querySelector(`details[data-part="${parte}"]`);
+      if (!detalles) return;
+      detalles.open = true;
+      detalles.scrollIntoView?.({ block: "nearest" });
+    },
+    destroy() {
+      if (destruido) return;
+      destruido = true;
+      container.replaceChildren();
+      container.hidden = true;
+    },
+  };
+}

@@ -62,7 +62,8 @@ class WheelContentTests(unittest.TestCase):
                         "shell.js", "icons.js", "filters.js", "header.js",
                         "history.js", "archive.js", "estados.js", "trace-model.js",
                         "presenter.js", "live-sync.js", "explorer.js", "actors.js",
-                        "timeline.js", "cards.js", "explorer.css"):
+                        "timeline.js", "cards.js", "explorer.css",
+                        "inspector.js", "relations.js"):
             with self.subTest(recurso=recurso):
                 self.assertIn(f"ccr_viewer/web/{recurso}", self.nombres)
 

@@ -1,7 +1,7 @@
 /**
  * Explorador de trazabilidad (§6): compone la franja de actores, el timeline,
- * los controles, la búsqueda, las tarjetas y un inspector mínimo sobre un
- * `TraceModel` (Tarea 6) y un `Presenter` (Tarea 7).
+ * los controles, la búsqueda, las tarjetas y el inspector (`inspector.js`)
+ * sobre un `TraceModel` (Tarea 6) y un `Presenter` (Tarea 7).
  *
  * Hay una sola selección, la del presentador: actores, puntos, tarjetas,
  * deslizador y búsqueda la cambian con sus acciones y todas las superficies
@@ -13,15 +13,17 @@
  * `presenter.state().reveal` y escribe las etapas en esa tarjeta. Se cancela
  * al pausar, al terminar el revelado, con movimiento reducido y al desmontar.
  *
- * Sin En Vivo (Tarea 12). El inspector mínimo lo sustituye el inspector
- * completo de la Tarea 11; `runKey` queda para las relaciones entre corridas.
+ * Sin En Vivo (Tarea 12). Las relaciones hacia otro hito de esta traza se
+ * resuelven aquí como selección explícita; el resto (hallazgos, checks, otra
+ * corrida, evidencia) sale por `onNavigate`.
  */
 
 import { abrirListaActores, crearFranjaActores, etiquetasDeActores } from "./actors.js";
 import { crearTarjetas } from "./cards.js";
-import { botonAccion, campo, elemento, mostrarEnPanel, textoDe } from "./dom.js";
-import { actorKey, actorLabel } from "./present.js";
-import { crearControles, crearTimeline, nodoTiempo } from "./timeline.js";
+import { botonAccion, elemento, mostrarEnPanel, textoDe } from "./dom.js";
+import { mountInspector } from "./inspector.js";
+import { actorKey } from "./present.js";
+import { crearControles, crearTimeline } from "./timeline.js";
 import { buildTraceModel, WINDOW_SIZE } from "./trace-model.js";
 
 const ESTADO_CADENA = {
@@ -48,83 +50,16 @@ function acotar(inicio, total) {
   return Math.min(Math.max(0, inicio), alinear(total - 1));
 }
 
-/** Identidad declarada; ausente se nombra como tal, sin sustituirla por otra. */
-function identidadDe(valor, ausente) {
-  if (actorKey(valor) === "∅") return ausente;
-  const etiqueta = actorLabel(valor);
-  const proveedor = typeof valor?.provider_id === "string" ? valor.provider_id.trim() : "";
-  return proveedor && proveedor !== etiqueta ? `${etiqueta} (${proveedor})` : etiqueta;
-}
-
-/**
- * Inspector mínimo en la región del shell: ID como encabezado, resumen,
- * actor/registrador/ejecutor diferenciados y relaciones declaradas como texto.
- */
-function crearInspectorMinimo(region) {
-  const raiz = elemento("div", { clase: "inspector-minimo", atributos: { "data-part": "inspector" } });
-  region.replaceChildren(raiz);
-  region.hidden = false;
-  return {
-    render(modelo, id, etiquetas) {
-      const evento = typeof id === "string" ? modelo.byId.get(id) : undefined;
-      raiz.setAttribute("data-event-id", evento ? id : "");
-      const rotulo = elemento("p", { clase: "inspector-rotulo", texto: "Hito seleccionado" });
-      if (!evento) {
-        raiz.replaceChildren(rotulo, elemento("p", { clase: "estado", texto: "Sin hito seleccionado." }));
-        return;
-      }
-      const vacio = { textoVacio: "No declarado" };
-      const datos = elemento("dl", { clase: "campos inspector-campos" });
-      datos.append(
-        campo("Secuencia", textoDe(evento.sequence), vacio),
-        campo("Tipo", textoDe(evento.kind), vacio),
-        campo("Estado original", textoDe(evento.status), vacio),
-        campo("Tiempo", nodoTiempo(evento)),
-        campo("Actor", etiquetas.get(actorKey(evento.actor)) ?? actorLabel(evento.actor)),
-        campo("Registrador", identidadDe(evento.recorder, "Registrador no declarado")),
-        campo("Ejecutor", identidadDe(evento.executor, "Ejecutor no declarado")),
-      );
-      const { outgoing, incoming } = modelo.relationsOf(id);
-      const relaciones = elemento("section", { clase: "inspector-relaciones" });
-      relaciones.append(elemento("h3", { texto: "Relaciones declaradas" }));
-      if (outgoing.length + incoming.length === 0) {
-        relaciones.append(elemento("p", { clase: "estado", texto: "Este hito no declara relaciones." }));
-      } else {
-        const lista = elemento("ul", { clase: "lista-simple" });
-        for (const relacion of [...outgoing, ...incoming]) {
-          const estado = textoDe(relacion.status) ?? "sin estado declarado";
-          lista.append(elemento("li", {
-            clase: "inspector-relacion",
-            texto: `${textoDe(relacion.event_id) ?? "?"} ${textoDe(relacion.relation) ?? "relación"} ${textoDe(relacion.target) ?? "?"} · ${estado}`,
-            atributos: { "data-relation-status": typeof relacion.status === "string" ? relacion.status : "" },
-          }));
-        }
-        relaciones.append(lista);
-      }
-      raiz.replaceChildren(
-        rotulo,
-        elemento("h2", { clase: "inspector-id", texto: id }),
-        elemento("p", { clase: "inspector-resumen", texto: textoDe(evento.summary) ?? "Sin resumen declarado." }),
-        datos,
-        relaciones,
-      );
-    },
-    destroy() {
-      region.replaceChildren();
-      region.hidden = true;
-    },
-  };
-}
-
 /**
  * Monta el explorador en `container`.
  *
  * Opciones: `model`, `presenter`, `runKey`, `onSelect(eventId, source)` (tras
- * cada selección explícita), `inspector` (región del shell) y `openDialog`
- * (diálogos del shell para la lista de actores).
+ * cada selección explícita), `inspector` (región del shell), `openDialog`
+ * (diálogos del shell para la lista de actores), `inventory` (inventario de
+ * archivos para la evidencia; ver `mountInspector`) y `onNavigate(destino)`
+ * para los destinos que no son un hito de esta traza.
  */
-export function mountExplorer(container, { model, presenter, runKey, onSelect, inspector, openDialog } = {}) {
-  void runKey;
+export function mountExplorer(container, { model, presenter, runKey, onSelect, inspector, openDialog, inventory, onNavigate } = {}) {
   let modelo = model ?? buildTraceModel(null);
   let etiquetas = etiquetasDeActores(modelo.actors);
   let consulta = "";
@@ -171,10 +106,34 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
     },
   });
   const buscador = crearBuscador();
-  const tarjetas = crearTarjetas({ onSelect: (id) => seleccionar(id, "card"), onPagina: moverPagina, onDesplazar: alDesplazarTarjetas });
+  const tarjetas = crearTarjetas({
+    onSelect: (id) => seleccionar(id, "card"),
+    onPagina: moverPagina,
+    onDesplazar: alDesplazarTarjetas,
+    onAccion: alAccionDeTarjeta,
+  });
   raiz.append(cabecera, vacio, franja.elemento, timeline.elemento, controles.elemento, buscador.elemento, tarjetas.elemento);
   container.replaceChildren(raiz);
-  const ficha = inspector ? crearInspectorMinimo(inspector) : null;
+  const ficha = inspector
+    ? mountInspector(inspector, { getModel: () => modelo, presenter, runKey, inventory, onNavigate: navegarDesdeInspector })
+    : null;
+
+  /** Un hito de esta traza se selecciona aquí; el resto lo resuelve la aplicación. */
+  function navegarDesdeInspector(destino) {
+    if (destruido || !destino) return;
+    if (destino.scope === "event") {
+      seleccionar(destino.id, "relation");
+      return;
+    }
+    onNavigate?.(destino);
+  }
+
+  /** «Relaciones (n)»/«Evidencia (n)» de una tarjeta: selección explícita y sección desplegada, sin mover el foco. */
+  function alAccionDeTarjeta(id, seccion) {
+    if (destruido || !modelo.byId.has(id)) return;
+    seleccionar(id, "card");
+    ficha?.expand(seccion);
+  }
 
   function crearBuscador() {
     const estadoId = `busqueda-estado-${montajes}`;
@@ -338,7 +297,7 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
       if (conocida) seguirSeleccion(id, { ventana: !fija("timeline"), pagina: !fija("cards") });
       pintarListas();
       franja.render(modelo, etiquetas, claveActorDe(id), { seguir: !fija("actors") });
-      ficha?.render(modelo, id, etiquetas);
+      ficha?.update();
       pintarBusqueda();
       if (conocida && (explicitaActual || seguirActivo(actual))) mostrarTarjeta(id);
       conservarFoco(region, id);
@@ -554,7 +513,7 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
       pintarEstructura();
       pintarListas(cambiados);
       franja.render(modelo, etiquetas, claveActorDe(actual.selectedId));
-      ficha?.render(modelo, actual.selectedId, etiquetas);
+      ficha?.update();
       pintarBusqueda();
       conservarFoco(region, actual.selectedId);
       sincronizar(actual);
