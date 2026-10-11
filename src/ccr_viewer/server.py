@@ -64,6 +64,7 @@ STATIC_RESOURCES = {
     "markdown.js": "text/javascript; charset=utf-8",
     "lifecycle.js": "text/javascript; charset=utf-8",
     "playback.js": "text/javascript; charset=utf-8",
+    "presenter.js": "text/javascript; charset=utf-8",
     "prefs.js": "text/javascript; charset=utf-8",
     "present.js": "text/javascript; charset=utf-8",
     "trace-model.js": "text/javascript; charset=utf-8",

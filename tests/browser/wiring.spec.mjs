@@ -86,7 +86,8 @@ test("autoplay mueve el hito visible y el teclado conserva controles", async ({ 
   await page.locator(".lista-revisiones button").first().click();
   await page.getByRole("tab", { name: "Trazabilidad" }).click();
   await page.getByRole("button", { name: "▶ Reproducir", exact: true }).click();
-  await expect(page.locator(".hito--seleccionado")).toContainText("E000002", { timeout: 1500 });
+  // Desde el último, el recorrido empieza en E000001 y avanza tras un paso de 2350 ms a 1×.
+  await expect(page.locator(".hito--seleccionado")).toContainText("E000002", { timeout: 4000 });
   await page.getByRole("button", { name: "Pausar", exact: true }).click();
   const controls = page.getByRole("group", { name: "Controles de reproducción" });
   await controls.focus();

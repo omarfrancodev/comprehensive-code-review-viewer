@@ -172,8 +172,10 @@ function enlazarRepeticion(control) {
       reemplazarRuta();
     }
   }
+  // La reproducción arranca en pausa y solo notifica cambios (navegación,
+  // avance o una instantánea distinta): sin interacción la URL no fija hito.
   control.subscribe((estado) => {
-    const id = estado.mode === "live" ? null : estado.selectedEventId;
+    const id = estado.selectedEventId;
     if (id !== store.getState().selectedEventId) store.dispatch({ type: "selectEvent", eventId: id });
   });
 }

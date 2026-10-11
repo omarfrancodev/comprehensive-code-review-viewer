@@ -76,6 +76,21 @@ function filaEvento(evento, seleccionado) {
   return fila;
 }
 
+/**
+ * Reproducir/pausar. La reproducción arranca en pausa sobre el último hito,
+ * donde `play()` es no-op: desde el último, el recorrido empieza por el primero.
+ */
+function alternar(repeticion) {
+  const estado = repeticion.state();
+  if (estado.mode === "playing") {
+    repeticion.pause();
+    return;
+  }
+  const orden = repeticion.order();
+  if (orden.length > 1 && estado.selectedEventId === orden.at(-1)) repeticion.seek(orden[0]);
+  repeticion.play();
+}
+
 function controles(repeticion, redibujar) {
   const caja = elemento("div", { clase: "reproduccion", atributos: { role: "group", "tabindex": "0", "aria-label": "Controles de reproducción" } });
   caja.addEventListener("keydown", event => {
@@ -83,7 +98,7 @@ function controles(repeticion, redibujar) {
     const actions = {
       ArrowLeft: () => repeticion.step(-1), ArrowRight: () => repeticion.step(1),
       Home: () => repeticion.seek(repeticion.order()[0]), End: () => repeticion.seek(repeticion.order().at(-1)),
-      " ": () => repeticion.state().mode === "playing" ? repeticion.pause() : repeticion.play(),
+      " ": () => alternar(repeticion),
     };
     if (actions[event.key]) { event.preventDefault(); actions[event.key](); redibujar(); }
   });
@@ -101,10 +116,11 @@ function controles(repeticion, redibujar) {
 
   caja.append(
     boton("◀ Anterior", () => repeticion.step(-1), { "aria-label": "Evento anterior" }),
-    boton("▶ Reproducir", () => (repeticion.state().mode === "playing" ? repeticion.pause() : repeticion.play())),
+    boton("▶ Reproducir", () => alternar(repeticion)),
     boton("Pausar", () => repeticion.pause()),
     boton("Siguiente ▶", () => repeticion.step(1), { "aria-label": "Evento siguiente" }),
-    boton("Volver a vivo", () => repeticion.resumeLive()),
+    // Selecciona el hito más reciente y descarta el contador de nuevos.
+    boton("Volver a vivo", () => repeticion.last()),
   );
 
   const inicio = elemento("button", { clase: "control", atributos: { type: "button", "aria-label": "Primer evento" }, texto: "⏮" });
