@@ -204,11 +204,11 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
   }
 
   /** La ventana del timeline y la página de tarjetas pasan a la del hito. */
-  function seguirSeleccion(id) {
+  function seguirSeleccion(id, { ventana = true, pagina = true } = {}) {
     if (!modelo.byId.has(id)) return;
-    inicioVentana = alinear(modelo.index.get(id));
+    if (ventana) inicioVentana = alinear(modelo.index.get(id));
     const posicion = posicionEnLista(id);
-    if (posicion >= 0) inicioPagina = alinear(posicion);
+    if (pagina && posicion >= 0) inicioPagina = alinear(posicion);
   }
 
   function pintarEstructura() {
@@ -264,6 +264,7 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
     if (!resultados) {
       resumen.hidden = true;
       resumen.textContent = "";
+      if (document.activeElement === mostrar) buscador.campo.focus({ preventScroll: true });
       mostrar.hidden = true;
       return;
     }
@@ -274,6 +275,8 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
       : n === 1 ? "1 coincidencia en todo el recorrido." : `${n} coincidencias en todo el recorrido.`;
     resumen.textContent = oculta ? `${cuantas} El hito seleccionado (${id}) no está entre los resultados.` : cuantas;
     resumen.hidden = false;
+    // Un botón oculto no conserva el foco: pasa al campo de búsqueda.
+    if (!oculta && document.activeElement === mostrar) buscador.campo.focus({ preventScroll: true });
     mostrar.hidden = !oculta;
   }
 
@@ -283,20 +286,53 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
     if (li) scrollEsperado = mostrarEnPanel(tarjetas.panel, li);
   }
 
-  /** Refleja el estado del presentador; repinta listas solo si cambia la selección. */
+  /** Región (timeline, tarjetas o franja) que contiene el foco del teclado, o `null`. */
+  function regionConFoco() {
+    const activo = document.activeElement;
+    if (!activo || activo === document.body) return null;
+    if (timeline.elemento.contains(activo)) return "timeline";
+    if (tarjetas.elemento.contains(activo)) return "cards";
+    if (franja.elemento.contains(activo)) return "actors";
+    return null;
+  }
+
+  /**
+   * Red de seguridad: si un repintado retiró el nodo enfocado de una región,
+   * el foco pasa (sin desplazar) a su equivalente estable en esa región.
+   */
+  function conservarFoco(region, id) {
+    if (!region || (document.activeElement && document.activeElement !== document.body)) return;
+    const destino = region === "timeline" ? timeline.respaldoDeFoco(id)
+      : region === "cards" ? tarjetas.respaldoDeFoco(id)
+        : franja.respaldoDeFoco(claveActorDe(id));
+    destino?.focus({ preventScroll: true });
+  }
+
+  /**
+   * Refleja el estado del presentador; repinta listas solo si cambia la selección.
+   *
+   * Regla de foco: una selección explícita del usuario lleva timeline, página y
+   * franja a la del hito. Un cambio que no es explícito (avance del recorrido,
+   * llegada o recarga) no mueve la ventana de la región que tiene el foco del
+   * teclado: el nodo enfocado sigue montado y la persona no vuelve a `<body>`.
+   */
   function sincronizar(actual = estado()) {
     if (destruido) return;
     const id = actual.selectedId;
     const conocida = typeof id === "string" && modelo.byId.has(id);
     if (id !== seleccionPintada && (conocida || id === null)) {
       seleccionPintada = id;
+      const explicitaActual = desplazarA === id;
+      const region = regionConFoco();
+      const fija = (nombre) => !explicitaActual && region === nombre;
       franja.avisar("");
-      if (conocida) seguirSeleccion(id);
+      if (conocida) seguirSeleccion(id, { ventana: !fija("timeline"), pagina: !fija("cards") });
       pintarListas();
-      franja.render(modelo, etiquetas, claveActorDe(id), { seguir: true });
+      franja.render(modelo, etiquetas, claveActorDe(id), { seguir: !fija("actors") });
       ficha?.render(modelo, id, etiquetas);
       pintarBusqueda();
-      if (conocida && (desplazarA === id || seguirActivo(actual))) mostrarTarjeta(id);
+      if (conocida && (explicitaActual || seguirActivo(actual))) mostrarTarjeta(id);
+      conservarFoco(region, id);
     } else {
       tarjetas.sincronizar(actual, modelo);
       timeline.seleccionar(id);
@@ -445,11 +481,13 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
       if (resultados) calcularResultados();
       const cambiados = new Set(Array.isArray(diff?.changedIds) ? diff.changedIds : []);
       const actual = estado();
+      const region = regionConFoco();
       pintarEstructura();
       pintarListas(cambiados);
       franja.render(modelo, etiquetas, claveActorDe(actual.selectedId));
       ficha?.render(modelo, actual.selectedId, etiquetas);
       pintarBusqueda();
+      conservarFoco(region, actual.selectedId);
       sincronizar(actual);
     },
     focusSelected,

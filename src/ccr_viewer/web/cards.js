@@ -133,5 +133,7 @@ export function crearTarjetas({ onSelect, onPagina, onDesplazar }) {
     sincronizar,
     li: (id) => cache.get(id)?.li ?? null,
     boton: (id) => cache.get(id)?.boton ?? null,
+    /** Nodo estable que recibe el foco si el enfocado se retiró: la tarjeta o el panel. */
+    respaldoDeFoco: (id) => cache.get(id)?.boton ?? panel,
   };
 }

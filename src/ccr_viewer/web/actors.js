@@ -142,6 +142,13 @@ export function crearFranjaActores({ onActor, onVerTodos }) {
       if (inicio >= actores.length) inicio = Math.max(0, Math.floor((actores.length - 1) / ACTORES_POR_VENTANA) * ACTORES_POR_VENTANA);
       pintar();
     },
+    /** Nodo estable que recibe el foco si el enfocado se retiró: el actor, la navegación o el primero. */
+    respaldoDeFoco(clave) {
+      return cache.get(clave)?.boton
+        ?? (pie.hidden ? undefined : [anterior, siguiente, todos].find((boton) => !boton.hidden))
+        ?? cache.values().next().value?.boton
+        ?? null;
+    },
     /** Explica en la franja por qué un actor no cambió la selección. */
     avisar(texto) {
       aviso.textContent = texto;

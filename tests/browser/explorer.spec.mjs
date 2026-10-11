@@ -326,6 +326,57 @@ test.describe("explorador de trazabilidad", () => {
     await expect(page.getByRole("button", { name: "Reproducir" })).toBeVisible();
   });
 
+  /** Pulsa un botón por su texto sin moverle el foco (`click()` del DOM no enfoca). */
+  const pulsarSinFoco = (page, texto) =>
+    page.evaluate((t) => [...document.querySelectorAll("[data-explorer] button")].find((b) => b.textContent === t).click(), texto);
+  const regionDelFoco = (page) =>
+    page.evaluate(() => (document.activeElement === document.body ? "body" : document.activeElement?.closest("[data-part]")?.dataset.part ?? null));
+
+  test("el recorrido que cruza de ventana no retira el foco de un marcador", async ({ page }) => {
+    await abrirTraza(page, trazaSintetica(60));
+    await page.getByRole("button", { name: "Ventana anterior" }).click();
+    await page.locator('[data-part="timeline"] button[data-event-id="E000050"]').click();
+    await esperarSeleccion(page, "E000050");
+    expect(await page.evaluate(() => document.activeElement?.dataset.eventId)).toBe("E000050");
+    await pulsarSinFoco(page, "Reproducir");
+    await expect(inspector(page)).toHaveAttribute("data-event-id", "E000051", { timeout: 6000 });
+    await pulsarSinFoco(page, "Pausar");
+    expect(await regionDelFoco(page)).toBe("timeline");
+    expect(await page.evaluate(() => document.activeElement?.dataset.eventId)).toBe("E000050");
+
+    // Una selección explícita sigue llevando el timeline a la ventana del hito.
+    await page.getByRole("button", { name: "Ir al último" }).click();
+    await expect(page.locator('[data-part="timeline"]')).toContainText("51–60 de 60");
+    await esperarSeleccion(page, "E000060");
+  });
+
+  test("el recorrido que cruza de página no retira el foco de una tarjeta", async ({ page }) => {
+    await abrirTraza(page, trazaSintetica(60));
+    await page.getByRole("button", { name: "Tarjetas anteriores" }).click();
+    await page.locator('[data-part="cards"] li[data-event-id="E000050"] button').first().click();
+    await esperarSeleccion(page, "E000050");
+    await pulsarSinFoco(page, "Reproducir");
+    await expect(inspector(page)).toHaveAttribute("data-event-id", "E000051", { timeout: 6000 });
+    await pulsarSinFoco(page, "Pausar");
+    expect(await regionDelFoco(page)).toBe("cards");
+    expect(await page.evaluate(() => document.activeElement?.closest("li")?.dataset.eventId)).toBe("E000050");
+  });
+
+  test("el recorrido que cambia de actor no retira el foco de la franja", async ({ page }) => {
+    await abrirTraza(page, trazaSintetica(20, { actors: 10 }));
+    await page.getByRole("slider", { name: "Posición del recorrido" }).focus();
+    await page.keyboard.press("Home");
+    // agente-7 es el último acceso de la primera ventana; su primer hito es E000008.
+    await actores(page).filter({ hasText: "agente-7" }).click();
+    await esperarSeleccion(page, "E000008");
+    await pulsarSinFoco(page, "Reproducir");
+    // E000009 es de agente-8, que está en la segunda ventana de la franja.
+    await expect(inspector(page)).toHaveAttribute("data-event-id", "E000009", { timeout: 6000 });
+    await pulsarSinFoco(page, "Pausar");
+    expect(await regionDelFoco(page)).toBe("actors");
+    expect(await page.evaluate(() => document.activeElement?.textContent)).toContain("agente-7");
+  });
+
   test("con movimiento reducido las tarjetas quedan completas", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await abrirTraza(page);

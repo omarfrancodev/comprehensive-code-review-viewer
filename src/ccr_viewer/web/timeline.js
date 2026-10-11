@@ -163,6 +163,13 @@ export function crearTimeline({ onSelect, onVentana }) {
       seleccionar(seleccionado);
     },
     seleccionar,
+    /** Nodo estable que recibe el foco si el enfocado se retiró: el marcador, la navegación o el primero. */
+    respaldoDeFoco(id) {
+      return cache.get(id)?.boton
+        ?? [anterior, siguiente].find((boton) => !boton.hidden)
+        ?? cache.values().next().value?.boton
+        ?? null;
+    },
   };
 }
 
