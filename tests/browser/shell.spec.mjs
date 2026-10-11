@@ -237,6 +237,40 @@ test("historial: Atrás restaura la pestaña anterior sin reproducir", async ({ 
   await expect(page.locator(`.lista-revisiones button[data-key="${CLAVE}"]`)).toHaveAttribute("aria-pressed", "true");
 });
 
+test("historial: volver a una entrada de Trazabilidad sin event restaura el hito por defecto", async ({ page }) => {
+  await conTraza(page);
+  await openFixture(page);
+  await abrirRevision(page);
+  const actual = page.locator('[data-part="cards"] li[aria-current="true"]');
+  const inspector = page.locator('#inspector [data-part="inspector"]');
+  // Al entrar se selecciona el último (E000003) sin escribirlo en la URL.
+  await pestana(page, "Trazabilidad").click();
+  await expect(actual).toHaveAttribute("data-event-id", "E000003");
+  expect(busqueda(page)).toBe(`?run=${CLAVE}&tab=trazabilidad`);
+  await pestana(page, "Hallazgos").click();
+  await pestana(page, "Trazabilidad").click();
+  await expect(actual).toHaveAttribute("data-event-id", "E000003");
+  await page.locator('[data-part="timeline"] button[data-event-id="E000002"]').click();
+  await expect(actual).toHaveAttribute("data-event-id", "E000002");
+  await expect.poll(() => busqueda(page)).toBe(`?run=${CLAVE}&tab=trazabilidad&event=E000002`);
+
+  await page.goBack();
+  await expect(pestana(page, "Hallazgos")).toHaveAttribute("aria-selected", "true");
+  await page.goBack();
+  await expect(pestana(page, "Trazabilidad")).toHaveAttribute("aria-selected", "true");
+  expect(busqueda(page)).toBe(`?run=${CLAVE}&tab=trazabilidad`);
+  // La entrada no declara hito: se vuelve al que se estaba leyendo en ella, el último.
+  await expect(actual).toHaveAttribute("data-event-id", "E000003");
+  await expect(inspector).toHaveAttribute("data-event-id", "E000003");
+  await expect(page.getByRole("button", { name: "Reproducir", exact: true })).toBeVisible();
+
+  // Adelante vuelve a la entrada con event=E000002.
+  await page.goForward();
+  await page.goForward();
+  await expect(pestana(page, "Trazabilidad")).toHaveAttribute("aria-selected", "true");
+  await expect(actual).toHaveAttribute("data-event-id", "E000002");
+});
+
 test("layout: sin scroll horizontal a 1440, 1024, 768 y 375 px", async ({ page }) => {
   await openFixture(page);
   await abrirRevision(page);

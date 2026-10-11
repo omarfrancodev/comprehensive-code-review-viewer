@@ -686,9 +686,21 @@ window.addEventListener("popstate", () => {
     } else if (ruta.run) {
       store.dispatch({ type: "setTab", tab: ruta.tab ?? "ficha" });
       store.dispatch({ type: "selectEvent", eventId: ruta.event });
+      if (!ruta.event && ruta.tab === "trazabilidad") restaurarHitoPorDefecto();
     }
   });
 });
+
+/**
+ * Una entrada de Trazabilidad sin `event` es la de la selección inicial, que
+ * no se escribe en la URL: el presentador sobrevive entre pestañas, así que se
+ * vuelve explícitamente al hito por defecto (el último), sin reproducir.
+ */
+function restaurarHitoPorDefecto() {
+  if (!presentador || !modeloTraza || ultimaTraza !== store.getState().selectedRun) return;
+  const porDefecto = modeloTraza.lastId;
+  if (porDefecto && presentador.state().selectedId !== porDefecto) presentador.select(porDefecto, "route");
+}
 
 /** Selector de una preferencia dentro del diálogo; cada cambio se aplica y guarda. */
 function selectorPreferencia(id, etiqueta, clave, opciones) {

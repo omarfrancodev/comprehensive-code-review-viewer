@@ -210,7 +210,9 @@ http://127.0.0.1:8765/?run=<clave>&tab=<pestaña>&event=<ID>
 Sólo se aceptan esas tres claves y esos formatos. La dirección nunca lleva rutas,
 el token, contenido ni filtros. Un hito inexistente produce un aviso y se
 selecciona uno válido; no se busca otra revisión por parecido. Atrás y Adelante
-restauran la selección y la vista sin iniciar la reproducción. El token de
+restauran la selección y la vista sin iniciar la reproducción; una entrada de
+Trazabilidad sin `event` (la de la selección inicial, que no se escribe en la
+dirección) vuelve al hito por defecto, el último. El token de
 arranque sigue estando sólo en el fragmento y se elimina al canjearlo.
 
 ## Preferencias
