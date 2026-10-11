@@ -312,6 +312,10 @@ export function createPresenter(opts = {}) {
         playback.ingest(modelo.events);
         pendientes = pendientes.filter((id) => modelo.byId.has(id));
         presentados = Math.min(presentados, modelo.events.length);
+        // El seleccionado siempre está presentado: con una traza que estaba
+        // vacía, la reproducción selecciona por regla inicial el último recibido.
+        const posicionSeleccion = indiceDe(seleccionado());
+        if (posicionSeleccion + 1 > presentados) presentados = posicionSeleccion + 1;
         if (revelando !== null && !modelo.byId.has(revelando)) revelando = null;
 
         // Prefijo reemplazado: el modelo se sustituye, se pausa y se advierte.
@@ -365,6 +369,14 @@ export function createPresenter(opts = {}) {
               partes.push({
                 code: "events_arrived",
                 text: plural(total, "1 hito nuevo sin presentar.", `${total} hitos nuevos sin presentar.`),
+              });
+            } else {
+              // Los nuevos quedaron presentados con la selección (primeros hitos).
+              partes.push({
+                code: "events_arrived",
+                text: nuevos.length === 1
+                  ? `Nuevo hito ${nuevos[0]}.`
+                  : `${nuevos.length} hitos nuevos; el último es ${nuevos.at(-1)}.`,
               });
             }
           }

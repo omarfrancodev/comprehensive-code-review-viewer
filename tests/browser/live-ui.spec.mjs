@@ -307,6 +307,24 @@ test.describe("LV-02 último hito activo", () => {
     await expect(enVivo(page)).toBeEnabled();
   });
 
+  test("primeros hitos de una traza vacía en replay: el seleccionado tiene tarjeta y no cuenta como pendiente", async ({ page }) => {
+    const fuente = await abrirVivo(page, { traza: { events: [], valid_prefix_length: 0, chain_status: "updating", relations: [], diagnostics: [] } });
+    await expect(page.locator('[data-part="empty"]')).toHaveText("Esperando el primer registro");
+    const llegadas = structuredClone(TRAZA_SINTETICA);
+    llegadas.events = llegadas.events.slice(0, 2);
+    llegadas.valid_prefix_length = 2;
+    llegadas.chain_status = "updating";
+    fuente.traza = llegadas;
+    await avisar(page);
+    await expect(marcadores(page)).toHaveCount(2);
+    await expect(inspector(page)).toHaveAttribute("data-event-id", "E000002");
+    // El seleccionado siempre está presentado: tiene tarjeta y la lista no está vacía.
+    await expect(actual(page)).toHaveAttribute("data-event-id", "E000002");
+    await expect(tarjetas(page)).toHaveCount(2);
+    await expect(page.locator('[data-part="cards"]')).not.toContainText("aún no se han presentado");
+    await expect(contador(page)).toBeHidden();
+  });
+
   test("último fuera de página: «Último activo: E000060» con acceso explícito", async ({ page }) => {
     await abrirVivo(page, { traza: trazaSintetica(60, { chain: "updating" }), evento: "E000001" });
     await expect(actual(page)).toHaveAttribute("data-event-id", "E000001");

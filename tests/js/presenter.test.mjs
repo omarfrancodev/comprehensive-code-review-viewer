@@ -571,6 +571,20 @@ describe("presentador: recepción en vivo", () => {
     assert.equal(p.state().selectedId, "E000007");
   });
 
+  it("L-20 los primeros hitos de una traza vacía en replay: el seleccionado queda presentado y fuera de la cola", () => {
+    const { p, m } = crear(0, VIVA);
+    assert.equal(p.state().selectedId, null);
+    actualizar(p, m, modelo(2));
+    const s = p.state();
+    assert.equal(s.mode, "replay");
+    assert.equal(s.selectedId, "E000002");
+    assert.ok(s.presentedCount >= 2, `presentedCount ${s.presentedCount} incluye el seleccionado`);
+    assert.ok(!s.pendingIds.includes("E000002"), "el seleccionado no cuenta como pendiente");
+    assert.deepEqual(s.pendingIds, []);
+    // Se anuncia la llegada aunque no quede nada pendiente.
+    assert.equal(s.notice?.code, "events_arrived");
+  });
+
   it("load() de una corrida nueva reinicia selección, modo, pausa y cola", () => {
     const { p, m } = crear(5, VIVA);
     p.enterLive();
