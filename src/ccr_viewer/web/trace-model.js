@@ -25,8 +25,20 @@ function lista(valor) {
 }
 
 function posicionDeSecuencia(evento) {
-  const secuencia = evento.sequence;
+  const secuencia = evento?.sequence;
   return typeof secuencia === "number" && Number.isFinite(secuencia) ? secuencia : Number.POSITIVE_INFINITY;
+}
+
+/**
+ * Comparador único del orden de eventos (modelo y reproducción): por
+ * `sequence` numérica finita; una ausente o no numérica va al final y los
+ * empates conservan el orden de llegada (el ordenamiento es estable).
+ */
+export function compareBySequence(a, b) {
+  const pa = posicionDeSecuencia(a);
+  const pb = posicionDeSecuencia(b);
+  if (pa === pb) return 0;
+  return pa < pb ? -1 : 1;
 }
 
 /** Texto de búsqueda en minúsculas: actor, ID, tipo, estado y resumen. */
@@ -71,12 +83,7 @@ export function buildTraceModel(trace) {
     vistos.add(evento.event_id);
     events.push(evento);
   }
-  events.sort((a, b) => {
-    const pa = posicionDeSecuencia(a);
-    const pb = posicionDeSecuencia(b);
-    if (pa === pb) return 0;
-    return pa < pb ? -1 : 1;
-  });
+  events.sort(compareBySequence);
 
   const byId = new Map();
   const index = new Map();

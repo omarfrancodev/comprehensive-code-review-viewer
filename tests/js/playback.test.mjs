@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import * as playback from "../../src/ccr_viewer/web/playback.js";
 import { createPlayback, PASO_BASE_MS, REVELADO_BASE_MS, VELOCIDADES } from "../../src/ccr_viewer/web/playback.js";
+import { buildTraceModel } from "../../src/ccr_viewer/web/trace-model.js";
 import { createFakeClock } from "./fake-clock.mjs";
 
 const evento = (id, sequence, occurred_at, recorded_at) => ({
@@ -250,6 +251,29 @@ describe("createPlayback", () => {
     assert.equal(reloj.pending(), 0);
     reloj.advance(10000);
     assert.equal(p.state().mode, "paused");
+  });
+
+  it("ordena como el modelo de traza aunque falte o no sea numérica la secuencia", () => {
+    // Datos no confiables: sin `sequence` y con `sequence` de texto van al final, en orden de llegada.
+    const eventos = [
+      { event_id: "X", summary: "sin secuencia" },
+      { event_id: "A", sequence: 1 },
+      { event_id: "B", sequence: 2 },
+      { event_id: "Y", sequence: "9" },
+      { event_id: "C", sequence: 3 },
+    ];
+    const modelo = buildTraceModel({ events: eventos });
+    const esperado = modelo.events.map((e) => e.event_id);
+    assert.deepEqual(esperado, ["A", "B", "C", "X", "Y"]);
+    const p = createPlayback(eventos, { clock: createFakeClock() });
+    assert.deepEqual(p.order(), esperado);
+    assert.equal(p.state().selectedEventId, modelo.lastId);
+    const q = createPlayback(modelo.events, { clock: createFakeClock() });
+    assert.deepEqual(q.order(), esperado, "el orden del modelo se conserva tal cual");
+    const invertidos = [...eventos].reverse();
+    q.ingest({ events: invertidos });
+    assert.deepEqual(q.order(), ["A", "B", "C", "Y", "X"], "ingest usa el mismo comparador");
+    assert.deepEqual(q.order(), buildTraceModel({ events: invertidos }).events.map((e) => e.event_id));
   });
 
   it("seek a un identificador desconocido no cambia la selección", () => {

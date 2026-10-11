@@ -438,8 +438,9 @@ export function createPresenter(opts = {}) {
           return;
         }
         if (!estadoActual().canPlay) return;
-        pausado = false;
         playback.play();
+        // Se deriva de la reproducción: nunca se declara «reproduciendo» sin temporizador.
+        pausado = playback.state().mode !== "playing";
       });
     },
 

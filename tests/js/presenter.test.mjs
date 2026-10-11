@@ -195,6 +195,79 @@ describe("presentador: reproducción y revelado", () => {
   });
 });
 
+describe("presentador: orden único del modelo con secuencias no confiables", () => {
+  // `X` sin `sequence` y `Y` con `sequence` de texto: el modelo los deja al final.
+  const traza = () => ({
+    events: [
+      { event_id: "X", summary: "sin secuencia" },
+      { event_id: "A", sequence: 1 },
+      { event_id: "B", sequence: 2 },
+      { event_id: "Y", sequence: "9" },
+      { event_id: "C", sequence: 3 },
+    ],
+  });
+
+  function crearRaro(ctx = VIVA) {
+    const clock = createFakeClock();
+    const p = createPresenter({ clock });
+    const m = buildTraceModel(traza());
+    p.load(m, ctx);
+    return { p, clock, m };
+  }
+
+  it("(a) el seleccionado inicial es el último del modelo y el último activo", () => {
+    const { p, m } = crearRaro();
+    assert.deepEqual(m.events.map((e) => e.event_id), ["A", "B", "C", "X", "Y"]);
+    assert.equal(m.lastId, "Y");
+    assert.equal(p.state().selectedId, m.lastId);
+    assert.equal(p.state().lastActiveId, m.lastId);
+    assert.equal(p.state().canPlay, false);
+
+    // Reproducción del revisor: [A(1), B(2), C(3), X(sin secuencia)].
+    const solo = buildTraceModel({ events: traza().events.filter((e) => e.event_id !== "Y") });
+    const q = createPresenter({ clock: createFakeClock() });
+    q.load(solo, VIVA);
+    assert.equal(solo.lastId, "X");
+    assert.equal(q.state().selectedId, "X");
+    assert.equal(q.state().lastActiveId, "X");
+    assert.equal(q.state().canPlay, false);
+  });
+
+  it("(b) togglePlay() desde el final es no-op; desde C reproduce con temporizador hasta Y", () => {
+    const { p, clock } = crearRaro();
+    p.togglePlay();
+    assert.equal(p.state().paused, true);
+    assert.equal(clock.pending(), 0);
+
+    p.select("C");
+    assert.equal(p.state().canPlay, true);
+    p.togglePlay();
+    assert.equal(p.state().paused, false);
+    assert.equal(clock.pending(), 1, "si dice reproducir, hay un temporizador");
+    clock.advance(2350);
+    assert.equal(p.state().selectedId, "X");
+    clock.advance(2350);
+    assert.equal(p.state().selectedId, "Y");
+    clock.advance(2350);
+    assert.equal(p.state().paused, true);
+  });
+
+  it("(c) el recorrido de restart() presenta todos los eventos en el orden del modelo", () => {
+    const { p, clock, m } = crearRaro(CERRADA);
+    const vistos = [];
+    p.subscribe((s) => { if (vistos.at(-1) !== s.selectedId) vistos.push(s.selectedId); });
+    p.restart();
+    p.togglePlay();
+    clock.advance(2350 * 6);
+    assert.deepEqual(vistos, m.events.map((e) => e.event_id));
+    const s = p.state();
+    assert.equal(s.presentedCount, 5);
+    assert.equal(s.selectedId, "Y");
+    assert.equal(s.paused, true);
+    assert.equal(clock.pending(), 0);
+  });
+});
+
 describe("presentador: disponibilidad de En Vivo", () => {
   it("L-1 solo processing habilita En Vivo", () => {
     assert.deepEqual(liveAvailability({ closureState: "processing", partial: false }), { enabled: true, reason: "processing" });

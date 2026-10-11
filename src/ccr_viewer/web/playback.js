@@ -11,6 +11,8 @@
  * restante; el presentador deriva el revelado de `stepElapsedMs`.
  */
 
+import { compareBySequence } from "./trace-model.js";
+
 /** Duración de un paso a 1×: 1800 ms de revelado + 550 ms de separación. */
 export const PASO_BASE_MS = 2350;
 
@@ -28,8 +30,12 @@ function relojDelNavegador() {
   };
 }
 
+/**
+ * Mismo orden que el modelo de traza (comparador compartido y ordenamiento
+ * estable): una lista ya ordenada por el modelo se conserva tal cual.
+ */
 function porSecuencia(eventos) {
-  return [...eventos].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
+  return [...eventos].sort(compareBySequence);
 }
 
 /**
@@ -146,7 +152,7 @@ export function createPlayback(eventos = [], opciones = {}) {
           if (Number.isFinite(left) !== Number.isFinite(right)) return Number.isFinite(left) ? -1 : 1;
           const tiempo = Number.isFinite(left) ? left - right : 0;
           if (tiempo !== 0) return tiempo;
-          return (a.sequence ?? 0) - (b.sequence ?? 0);
+          return compareBySequence(a, b);
         })
         .map((evento) => evento.event_id),
 
