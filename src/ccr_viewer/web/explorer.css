@@ -1,9 +1,10 @@
 /*
  * Explorador de trazabilidad (§6): franja de actores, timeline por pasos de
  * secuencia, controles, búsqueda, tarjetas e inspector mínimo. Solo consume
- * tokens de tokens.css. Sin animaciones: el revelado progresivo llega aparte.
- * Las propiedades dinámicas (`--marcadores`, `--cursor`) se escriben con
- * `style.setProperty`, nunca con estilos en línea.
+ * tokens de tokens.css. Las propiedades dinámicas (`--marcadores`, `--cursor`,
+ * `--etapa-*`) se escriben con `style.setProperty`, nunca con estilos en línea.
+ * El movimiento (cursor, inspector, revelado) se anula por completo con
+ * movimiento reducido del sistema o la preferencia «Reducido».
  */
 
 .explorador {
@@ -276,6 +277,7 @@ button[aria-disabled="true"] {
   background: var(--acento);
   opacity: 0.6;
   pointer-events: none;
+  transition: left var(--duracion-cursor) ease-out;
 }
 
 .timeline-leyenda {
@@ -418,6 +420,7 @@ button[aria-disabled="true"] {
 }
 
 .tarjeta {
+  position: relative;
   display: grid;
   gap: var(--espacio-2);
   min-width: 0;
@@ -502,11 +505,102 @@ button[aria-disabled="true"] {
   font-size: var(--tam-pequeno);
 }
 
+.tarjeta-copiar {
+  margin-left: auto;
+  font-size: var(--tam-meta);
+}
+
+/* --- Revelado progresivo (§7) ----------------------------------------------
+ * Una sola tarjeta en `revealing`. Las etapas (0–1) se solapan: estructura
+ * 0–22 %, cabecera 18–42 %, contenido 36–72 % y acciones 68–100 %. Solo
+ * máscara, opacidad y transformación: el espacio de la tarjeta es el final
+ * desde el primer fotograma y el texto completo siempre está en el DOM.
+ */
+
+.tarjeta-brillo {
+  display: none;
+}
+
+.tarjeta[data-state="revealing"] {
+  overflow: hidden;
+  opacity: calc(0.35 + 0.65 * var(--etapa-estructura, 1));
+  transform: translateY(calc((1 - var(--etapa-estructura, 1)) * 6px));
+  animation: pulso-llegada var(--duracion-pulso) ease-out 1;
+}
+
+.tarjeta[data-state="revealing"] .tarjeta-brillo {
+  position: absolute;
+  inset: 0;
+  display: block;
+  background: linear-gradient(100deg, transparent 25%, var(--acento-suave) 50%, transparent 75%);
+  background-size: 200% 100%;
+  opacity: calc(1 - var(--etapa-cabecera, 1));
+  pointer-events: none;
+  animation: brillo-revelado var(--duracion-brillo) linear infinite;
+}
+
+/* La pausa congela también el brillo. */
+.explorador[data-playback="paused"] .tarjeta-brillo {
+  animation-play-state: paused;
+}
+
+.tarjeta[data-state="revealing"] [data-part="header"] {
+  opacity: var(--etapa-cabecera, 1);
+  transform: translateY(calc((1 - var(--etapa-cabecera, 1)) * 4px));
+}
+
+.tarjeta[data-state="revealing"] [data-part="content"] {
+  --corte-contenido: calc(var(--etapa-contenido, 1) * 130% - 30%);
+  opacity: calc(0.2 + 0.8 * var(--etapa-contenido, 1));
+  transform: translateY(calc((1 - var(--etapa-contenido, 1)) * 4px));
+  -webkit-mask-image: linear-gradient(to bottom, #000 var(--corte-contenido), transparent calc(var(--corte-contenido) + 30%));
+  mask-image: linear-gradient(to bottom, #000 var(--corte-contenido), transparent calc(var(--corte-contenido) + 30%));
+}
+
+.tarjeta[data-state="revealing"] [data-part="actions"] {
+  opacity: var(--etapa-acciones, 1);
+  transform: translateY(calc((1 - var(--etapa-acciones, 1)) * 4px));
+}
+
+@keyframes brillo-revelado {
+  from {
+    background-position: 150% 0;
+  }
+
+  to {
+    background-position: -50% 0;
+  }
+}
+
+/* Pulso de llegada único (≤ 560 ms). */
+@keyframes pulso-llegada {
+  from {
+    box-shadow: 0 0 0 0 var(--acento);
+  }
+
+  to {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+
 /* --- Inspector mínimo ---------------------------------------------------- */
 
 .inspector-minimo {
   display: grid;
   gap: var(--espacio-2);
+  transition: opacity var(--duracion-inspector) ease-out;
+}
+
+/* El contenido nuevo del inspector aparece con una transición corta (160–180 ms); nunca se «escribe». */
+.inspector-minimo > * {
+  transition: opacity var(--duracion-inspector) ease-out, transform var(--duracion-inspector) ease-out;
+}
+
+@starting-style {
+  .inspector-minimo > * {
+    opacity: 0;
+    transform: translateY(2px);
+  }
 }
 
 .inspector-rotulo {
@@ -568,5 +662,54 @@ button[aria-disabled="true"] {
   .explorador-timeline,
   .explorador-controles {
     padding: var(--espacio-2);
+  }
+}
+
+/* --- Movimiento reducido (sistema o preferencia «Reducido») ---------------
+ * Elementos completos al instante, sin brillo, pulsos ni transiciones. Los
+ * controles y el avance discreto siguen disponibles.
+ */
+
+:root[data-motion="reduce"] .explorador *,
+:root[data-motion="reduce"] .explorador *::before,
+:root[data-motion="reduce"] .explorador *::after,
+:root[data-motion="reduce"] .inspector-minimo,
+:root[data-motion="reduce"] .inspector-minimo * {
+  animation: none !important;
+  transition: none !important;
+}
+
+:root[data-motion="reduce"] .tarjeta[data-state="revealing"],
+:root[data-motion="reduce"] .tarjeta[data-state="revealing"] [data-part] {
+  opacity: 1;
+  transform: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+:root[data-motion="reduce"] .tarjeta[data-state="revealing"] .tarjeta-brillo {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .explorador *,
+  .explorador *::before,
+  .explorador *::after,
+  .inspector-minimo,
+  .inspector-minimo * {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .tarjeta[data-state="revealing"],
+  .tarjeta[data-state="revealing"] [data-part] {
+    opacity: 1;
+    transform: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  .tarjeta[data-state="revealing"] .tarjeta-brillo {
+    display: none;
   }
 }

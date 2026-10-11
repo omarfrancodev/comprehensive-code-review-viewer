@@ -57,6 +57,11 @@
   /* Movimiento: duraciones cortas que se anulan con movimiento reducido. */
   --duracion-corta: 160ms;
   --duracion-media: 240ms;
+  /* Explorador (§7): decisiones de diseño, nunca tiempos de ejecución. */
+  --duracion-cursor: 420ms;
+  --duracion-inspector: 170ms;
+  --duracion-pulso: 560ms;
+  --duracion-brillo: 1200ms;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -137,11 +142,19 @@
 :root[data-motion="reduce"] {
   --duracion-corta: 0ms;
   --duracion-media: 0ms;
+  --duracion-cursor: 0ms;
+  --duracion-inspector: 0ms;
+  --duracion-pulso: 0ms;
+  --duracion-brillo: 0ms;
 }
 
 @media (prefers-reduced-motion: reduce) {
   :root {
     --duracion-corta: 0ms;
     --duracion-media: 0ms;
+    --duracion-cursor: 0ms;
+    --duracion-inspector: 0ms;
+    --duracion-pulso: 0ms;
+    --duracion-brillo: 0ms;
   }
 }

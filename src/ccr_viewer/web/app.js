@@ -94,6 +94,17 @@ const biblioteca = mountLibrary(bibliotecaNodo, { getState: store.getState, disp
 applyPrefs(raizDocumento, store.getState().prefs);
 if (temaNodo) temaNodo.value = store.getState().prefs.theme;
 
+/** Abrir un diálogo pausa la presentación; cerrarlo no la reanuda (§7). */
+function abrirDialogo(opciones) {
+  presentador?.pause("dialog");
+  return shell.openDialog(opciones);
+}
+
+// Ocultar la página pausa la presentación; volver a mostrarla no la reanuda.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") presentador?.pause("hidden");
+});
+
 const pestanas = createTabs(
   barraNodo,
   PESTANAS.map((pestana) => ({ id: pestana.id, label: pestana.etiqueta })),
@@ -330,7 +341,7 @@ function dibujarRevision() {
             runKey: clave,
             onSelect: alSeleccionarHito,
             inspector: shell.regions.inspector,
-            openDialog: shell.openDialog,
+            openDialog: abrirDialogo,
           }),
         };
         if (avisoHito) revisionNodo.prepend(elemento("p", { clase: "estado estado--aviso", texto: avisoHito }));
@@ -508,7 +519,7 @@ function selectorPreferencia(id, etiqueta, clave, opciones) {
 }
 
 document.getElementById("preferencias")?.addEventListener("click", () => {
-  shell.openDialog({
+  abrirDialogo({
     title: "Preferencias",
     build(cuerpo) {
       cuerpo.append(
@@ -521,7 +532,7 @@ document.getElementById("preferencias")?.addEventListener("click", () => {
 });
 
 raizBoton?.addEventListener("click", () => {
-  shell.openDialog({
+  abrirDialogo({
     title: "Contexto de raíz",
     build(cuerpo) {
       const config = store.getState().config;

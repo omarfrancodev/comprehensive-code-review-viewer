@@ -8,9 +8,13 @@
  * la reflejan. Seleccionar nunca mueve el foco al inspector. Una selección o
  * una recarga actualiza solo los nodos afectados (≤50 tarjetas y marcadores).
  *
- * Sin revelado animado (Tarea 10) ni En Vivo (Tarea 12). El inspector mínimo
- * lo sustituye el inspector completo de la Tarea 11; `runKey` queda para las
- * relaciones entre corridas de esa tarea.
+ * Revelado (§7): un único muestreador `requestAnimationFrame`, activo solo
+ * mientras una tarjeta se revela con la reproducción en marcha, lee
+ * `presenter.state().reveal` y escribe las etapas en esa tarjeta. Se cancela
+ * al pausar, al terminar el revelado, con movimiento reducido y al desmontar.
+ *
+ * Sin En Vivo (Tarea 12). El inspector mínimo lo sustituye el inspector
+ * completo de la Tarea 11; `runKey` queda para las relaciones entre corridas.
  */
 
 import { abrirListaActores, crearFranjaActores, etiquetasDeActores } from "./actors.js";
@@ -133,6 +137,9 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
   let desplazarA = null;
   let scrollEsperado = 0;
   let cerrarDialogo = null;
+  let cuadro = null;
+  // Regiones que no siguieron un cambio no explícito por tener el foco.
+  const fijadas = new Set();
   let destruido = false;
   const estado = () => presenter.state();
 
@@ -325,6 +332,8 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
       const explicitaActual = desplazarA === id;
       const region = regionConFoco();
       const fija = (nombre) => !explicitaActual && region === nombre;
+      if (explicitaActual) fijadas.clear();
+      else if (conocida && region) fijadas.add(region);
       franja.avisar("");
       if (conocida) seguirSeleccion(id, { ventana: !fija("timeline"), pagina: !fija("cards") });
       pintarListas();
@@ -338,6 +347,58 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
       timeline.seleccionar(id);
     }
     controles.sincronizar(actual, modelo, seguirActivo(actual));
+    raiz.dataset.playback = actual.paused ? "paused" : "playing";
+    programarMuestreo(actual);
+  }
+
+  /** Hay un revelado que avanza: la tarjeta en `revealing` con la reproducción en marcha. */
+  const revelaEnCurso = (actual) => Boolean(actual.reveal && actual.reveal.progress < 1 && !actual.paused);
+
+  function detenerMuestreo() {
+    if (cuadro === null) return;
+    cancelAnimationFrame(cuadro);
+    cuadro = null;
+  }
+
+  function programarMuestreo(actual) {
+    if (destruido || !revelaEnCurso(actual)) detenerMuestreo();
+    else if (cuadro === null) cuadro = requestAnimationFrame(muestrear);
+  }
+
+  /** Un fotograma: solo la tarjeta que se revela; nunca el listado completo. */
+  function muestrear() {
+    cuadro = null;
+    if (destruido) return;
+    const actual = estado();
+    if (tarjetas.revelar(actual) && revelaEnCurso(actual)) {
+      cuadro = requestAnimationFrame(muestrear);
+      return;
+    }
+    // El revelado terminó entre dos avisos del presentador (p. ej. en la
+    // separación entre hitos): se refleja el estado discreto una vez.
+    tarjetas.sincronizar(actual, modelo);
+    controles.sincronizar(actual, modelo, seguirActivo(actual));
+  }
+
+  /**
+   * Una región fijada por el foco durante el recorrido vuelve a seguir la
+   * selección cuando el foco sale de ella (no al cambiar de ventana del sistema).
+   */
+  function alSalirFoco(nombre, region, evento) {
+    if (destruido || !fijadas.has(nombre) || region.contains(evento.relatedTarget) || !document.hasFocus()) return;
+    queueMicrotask(() => {
+      if (destruido || !fijadas.has(nombre) || regionConFoco() === nombre) return;
+      fijadas.delete(nombre);
+      const id = estado().selectedId;
+      if (!modelo.byId.has(id)) return;
+      if (nombre === "actors") {
+        franja.render(modelo, etiquetas, claveActorDe(id), { seguir: true });
+        return;
+      }
+      const antes = nombre === "timeline" ? inicioVentana : inicioPagina;
+      seguirSeleccion(id, { ventana: nombre === "timeline", pagina: nombre === "cards" });
+      if ((nombre === "timeline" ? inicioVentana : inicioPagina) !== antes) pintarListas();
+    });
   }
 
   /**
@@ -391,12 +452,14 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
   }
 
   function moverVentana(delta) {
+    fijadas.clear();
     inicioVentana = acotar(inicioVentana + delta * WINDOW_SIZE, modelo.events.length);
     if (!resultados) inicioPagina = inicioVentana;
     pintarListas();
   }
 
   function moverPagina(delta) {
+    fijadas.clear();
     inicioPagina = acotar(inicioPagina + delta * WINDOW_SIZE, totalLista());
     if (!resultados) inicioVentana = inicioPagina;
     pintarListas();
@@ -468,6 +531,12 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
     tarjetas.boton(id)?.focus({ preventScroll: true });
   }
 
+  for (const [nombre, region] of [["timeline", timeline.elemento], ["cards", tarjetas.elemento], ["actors", franja.elemento]]) {
+    region.addEventListener("focusout", (evento) => alSalirFoco(nombre, region, evento));
+    // Navegar a mano dentro de la región (ventanas, páginas) la deja donde la persona la llevó.
+    region.addEventListener("click", () => fijadas.delete(nombre));
+  }
+
   pintarEstructura();
   sincronizar();
   const desuscribir = presenter.subscribe((actual) => sincronizar(actual));
@@ -494,6 +563,7 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
     destroy() {
       if (destruido) return;
       destruido = true;
+      detenerMuestreo();
       desuscribir();
       cerrarDialogo?.();
       ficha?.destroy();
