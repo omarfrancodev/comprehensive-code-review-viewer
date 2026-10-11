@@ -100,7 +100,7 @@ async function abrirTraza(page, traza = trazaBase(), { inventario = null } = {})
     if (peticion.url().includes("/api/")) peticiones.push(peticion.url());
   });
   await page.route("**/api/runs/*/trace", (ruta) =>
-    ruta.fulfill(responder(ruta.request().url().includes(RUN_B) ? TRAZA_B : traza)),
+    ruta.fulfill(responder(ruta.request().url().includes(RUN_B) ? TRAZA_B : (typeof traza === "function" ? traza() : traza))),
   );
   await openFixture(page);
   // Rutas propias tras las del soporte: Playwright prioriza la última registrada.
@@ -436,5 +436,142 @@ test.describe("estados vacíos", () => {
     await expect(inspector(page).locator('[data-part="inspector-time"]')).toContainText("respaldo de secuencia");
     await expect(relaciones(page)).toHaveCount(0);
     await expect(evidencia(page)).toHaveCount(0);
+  });
+});
+
+test.describe("recarga de la fuente (§11)", () => {
+  /** Sustituye `EventSource` para entregar avisos a mano (`window.entregarAviso`). */
+  async function instalarAvisos(page) {
+    await page.addInitScript(() => {
+      window.EventSource = class {
+        addEventListener(tipo, devolucion) {
+          if (tipo === "notice") window.entregarAviso = (aviso) => devolucion({ data: JSON.stringify(aviso) });
+        }
+        close() {}
+      };
+      // Portapapeles que acepta en ambos navegadores: solo importa el aviso de copia.
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: () => Promise.resolve() } });
+    });
+  }
+
+  /**
+   * Deja el inspector con estado de lectura: evidencia y JSON desplegados, un
+   * aviso de copia, parte del JSON seleccionada y el foco en «Abrir en Documentos».
+   */
+  async function prepararLectura(page) {
+    await evidencia(page).locator("summary").click();
+    const abrir = evidencia(page).getByRole("button", { name: /Abrir en Documentos/ });
+    await expect(abrir).toBeVisible();
+    await inspector(page).getByRole("button", { name: "Copiar resumen", exact: true }).click();
+    await expect(inspector(page).locator('[data-part="copy-status"]')).toContainText("copiado");
+    const json = inspector(page).locator('details[data-part="original-json"]');
+    await json.locator("summary").click();
+    await expect(json).toHaveAttribute("open", "");
+    const seleccionado = await page.evaluate(() => {
+      const texto = document.querySelector('#inspector details[data-part="original-json"] pre').firstChild;
+      const rango = document.createRange();
+      rango.setStart(texto, 10);
+      rango.setEnd(texto, 60);
+      getSelection().removeAllRanges();
+      getSelection().addRange(rango);
+      return getSelection().toString();
+    });
+    // Firefox en Windows devuelve los saltos como CRLF en `toString()`.
+    expect(seleccionado.replace(/\r\n/g, "\n").length).toBe(50);
+    await abrir.focus();
+    // Testigos: el nodo enfocado, el «comprobando» transitorio y el repintado del explorador.
+    await page.evaluate(() => {
+      document.activeElement.dataset.testigo = "1";
+      document.querySelector('[data-part="chain"] strong').dataset.testigo = "1";
+      window.__pendiente = false;
+      new MutationObserver(() => {
+        if (document.querySelector("#inspector [data-evidence-pending]")) window.__pendiente = true;
+      }).observe(document.getElementById("inspector"), { subtree: true, childList: true, attributes: true });
+    });
+    return seleccionado;
+  }
+
+  async function recargar(page) {
+    await page.evaluate((clave) => window.entregarAviso({ kind: "run_changed", run_key: clave, cursor: 2 }), RUN_A);
+    // La cadena se repinta con cada modelo nuevo: su testigo desaparece.
+    await expect(page.locator('[data-part="chain"] strong[data-testigo]')).toHaveCount(0);
+    await page.evaluate(() => new Promise((listo) => requestAnimationFrame(() => setTimeout(listo, 100))));
+  }
+
+  const lectura = (page) => page.evaluate(() => ({
+    accion: document.activeElement?.dataset.accion ?? null,
+    mismoNodo: document.activeElement?.dataset.testigo === "1",
+    seleccion: getSelection().toString(),
+    jsonAbierto: document.querySelector('#inspector details[data-part="original-json"]')?.open ?? false,
+    evidenciaAbierta: document.querySelector('#inspector details[data-part="evidence"]')?.open ?? false,
+    estadoCopia: document.querySelector('#inspector [data-part="copy-status"]')?.textContent ?? "",
+    pendiente: window.__pendiente,
+  }));
+
+  test("una recarga con los mismos datos no toca foco, JSON abierto, selección ni aviso de copia", async ({ page }) => {
+    await instalarAvisos(page);
+    await abrirTraza(page, () => trazaBase());
+    const seleccionado = await prepararLectura(page);
+    await recargar(page);
+    const estado = await lectura(page);
+    expect(estado).toEqual({
+      accion: "evidencia-0",
+      mismoNodo: true,
+      seleccion: seleccionado,
+      jsonAbierto: true,
+      evidenciaAbierta: true,
+      estadoCopia: "El resumen copiado.",
+      pendiente: false,
+    });
+    await expect(inspector(page)).toHaveAttribute("data-event-id", "E000003");
+  });
+
+  test("un hito nuevo no relacionado no altera la lectura del hito seleccionado", async ({ page }) => {
+    await instalarAvisos(page);
+    let traza = trazaBase();
+    await abrirTraza(page, () => traza);
+    const seleccionado = await prepararLectura(page);
+    traza = trazaBase();
+    traza.events.push({
+      ...structuredClone(traza.events[1]),
+      event_id: "E000004",
+      sequence: 4,
+      summary: "Hito nuevo sin relación con E000003",
+      evidence: [],
+    });
+    traza.valid_prefix_length = 4;
+    traza.temporal_order = ["E000003", "E000002", "E000001", "E000004"];
+    await recargar(page);
+    await expect(page.locator('[data-part="cards"] li[data-event-id="E000004"]')).toHaveCount(1);
+    const estado = await lectura(page);
+    expect(estado).toEqual({
+      accion: "evidencia-0",
+      mismoNodo: true,
+      seleccion: seleccionado,
+      jsonAbierto: true,
+      evidenciaAbierta: true,
+      estadoCopia: "El resumen copiado.",
+      pendiente: false,
+    });
+    await expect(inspector(page)).toHaveAttribute("data-event-id", "E000003");
+  });
+
+  test("si cambian las relaciones del hito se repinta en su sitio conservando foco, detalles y selección", async ({ page }) => {
+    await instalarAvisos(page);
+    let traza = trazaBase();
+    await abrirTraza(page, () => traza);
+    const seleccionado = await prepararLectura(page);
+    traza = trazaBase();
+    traza.relations.push({ event_id: "E000003", relation: "records", raw: "E000001", target: "E000001", status: "resolved", run_key: RUN_A, file_key: null });
+    await recargar(page);
+    await expect(relaciones(page).locator("summary")).toHaveText(/Relaciones \(6\)/);
+    const estado = await lectura(page);
+    // El cuerpo se repintó (nodo nuevo), pero el control, los detalles y la selección siguen.
+    expect(estado.mismoNodo).toBe(false);
+    expect(estado.accion).toBe("evidencia-0");
+    expect(estado.seleccion).toBe(seleccionado);
+    expect(estado.jsonAbierto).toBe(true);
+    expect(estado.evidenciaAbierta).toBe(true);
+    expect(estado.pendiente).toBe(false);
   });
 });

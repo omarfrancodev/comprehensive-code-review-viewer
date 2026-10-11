@@ -63,31 +63,46 @@ async function copiar(valor, estado, nombre) {
  * - `getModel()`: modelo de traza vigente; `presenter.state().selectedId` da la selección.
  * - `runKey`: clave opaca de la corrida actual (relaciones locales frente a otras corridas).
  * - `inventory`: lista de archivos, promesa o función que la devuelve; se pide
- *   solo cuando un hito declara evidencia y una vez por modelo.
+ *   solo cuando un hito declara evidencia y una vez por modelo. Mientras se
+ *   vuelve a pedir tras una recarga, sigue a la vista el último inventario listo.
  * - `onNavigate(destino)`: `{scope:"event"|"finding"|"check", id}`,
  *   `{scope:"run", runKey, id, label}` o `{scope:"file", fileKey, relativePath}`.
  *
  * Devuelve `update()` (refleja modelo y selección), `expand(seccion)`
  * (`"relaciones"`/`"evidencia"`) y `destroy()`.
+ *
+ * Recargar la fuente (§11) no mueve el foco ni borra la lectura: si el hito
+ * seleccionado, sus relaciones, su etiqueta de actor y el inventario visible no
+ * cambian, el inspector no se vuelve a pintar. Si algo cambió, se repinta en
+ * su sitio conservando los `<details>` abiertos, el foco (por clave), el
+ * desplazamiento y la selección de texto que sigan existiendo.
  */
 export function mountInspector(container, { getModel, presenter, runKey, inventory, onNavigate } = {}) {
   const raiz = elemento("div", { clase: "inspector", atributos: { "data-part": "inspector", "data-event-id": "" } });
   const rotulo = elemento("p", { clase: "inspector-rotulo", texto: "Hito seleccionado" });
   let cuerpo = elemento("div", { clase: "inspector-cuerpo", atributos: { "data-part": "inspector-body" } });
   let orden = null;
+  let ordenFirma = null;
+  let ordenIds = [];
+  let ordenLleno = false;
   raiz.append(rotulo, cuerpo);
   container.replaceChildren(raiz);
   container.hidden = false;
 
   // Secciones desplegadas por la persona: se conservan entre selecciones.
-  const abiertas = { relaciones: false, evidencia: false };
+  const abiertas = { relaciones: false, evidencia: false, json: false };
   let inventario = { modelo: null, estado: "idle", archivos: null, error: null };
-  let pintado = { modelo: undefined, id: undefined, evento: undefined, inventario: undefined };
+  let pintado = { id: undefined, firma: undefined };
   let etiquetas = { modelo: null, mapa: new Map() };
   let destruido = false;
+  // Solo una navegación explícita desde el inspector a otro hito lleva el foco a su encabezado.
+  let navegacionExplicita = null;
 
   const navegar = (destino) => {
-    if (!destruido) onNavigate?.(destino);
+    if (destruido) return;
+    navegacionExplicita = destino?.scope === "event" ? destino.id : null;
+    onNavigate?.(destino);
+    navegacionExplicita = null;
   };
 
   function etiquetasDe(modelo) {
@@ -97,12 +112,25 @@ export function mountInspector(container, { getModel, presenter, runKey, invento
 
   // --- Inventario (solo para evidencia) ------------------------------------
 
+  /** Lo que el inventario aporta a la vista: cambia solo si cambia lo que se muestra. */
+  function firmaDeInventario(estado) {
+    if (estado.estado === "ready") {
+      return `ready:${JSON.stringify(estado.archivos.map((archivo) => [archivo?.key, archivo?.relative_path]))}`;
+    }
+    return estado.estado === "error" ? `error:${estado.error}` : estado.estado;
+  }
+
   function asegurarInventario(modelo) {
     if (inventario.modelo === modelo && inventario.estado !== "idle") return;
-    const actual = { modelo, estado: "loading", archivos: null, error: null };
+    // Tras una recarga se revalida en segundo plano: el último inventario listo
+    // sigue a la vista y la evidencia enlazada nunca pasa a «comprobando».
+    const listo = inventario.estado === "ready" ? inventario : null;
+    const actual = listo ? { ...listo, modelo } : { modelo, estado: "loading", archivos: null, error: null };
     inventario = actual;
     const terminar = (estado, archivos, error) => {
       if (destruido || inventario !== actual) return;
+      // Un fallo al revalidar conserva el inventario listo de esta misma corrida.
+      if (estado === "error" && listo) return;
       inventario = { ...actual, estado, archivos, error };
       update();
     };
@@ -117,7 +145,7 @@ export function mountInspector(container, { getModel, presenter, runKey, invento
       return;
     }
     if (!fuente || typeof fuente.then !== "function") {
-      inventario = { ...actual, estado: "error", error: "el inventario no está disponible" };
+      if (!listo) inventario = { ...actual, estado: "error", error: "el inventario no está disponible" };
       return;
     }
     fuente.then(
@@ -366,11 +394,10 @@ export function mountInspector(container, { getModel, presenter, runKey, invento
   }
 
   function seccionJson(evento) {
-    const detalles = elemento("details", { clase: "inspector-detalle", atributos: { "data-part": "original-json" } });
+    const detalles = detalle("json", "original-json", "JSON original del hito");
     detalles.append(
-      elemento("summary", { texto: "JSON original del hito", atributos: { "data-accion": "sumario-json" } }),
       elemento("p", { clase: "nota", texto: "Incluye los campos que el visor no presenta; nada se descarta." }),
-      elemento("pre", { clase: "codigo", texto: JSON.stringify(evento, null, 2) ?? String(evento) }),
+      elemento("pre", { clase: "codigo", texto: JSON.stringify(evento, null, 2) ?? String(evento), atributos: { "data-texto": "json" } }),
     );
     return detalles;
   }
@@ -387,7 +414,11 @@ export function mountInspector(container, { getModel, presenter, runKey, invento
     return [
       elemento("h2", { clase: "inspector-id", texto: id, atributos: { tabindex: "-1" } }),
       seccionCopiar(id, evento),
-      elemento("p", { clase: resumen === null ? "inspector-resumen valor--desconocido" : "inspector-resumen", texto: resumen ?? "Sin resumen declarado." }),
+      elemento("p", {
+        clase: resumen === null ? "inspector-resumen valor--desconocido" : "inspector-resumen",
+        texto: resumen ?? "Sin resumen declarado.",
+        atributos: { "data-texto": "resumen" },
+      }),
       seccionCampos(evento, modelo),
       seccionTiempo(evento),
       seccion("Relaciones", seccionRelaciones(id, modelo)),
@@ -398,49 +429,133 @@ export function mountInspector(container, { getModel, presenter, runKey, invento
 
   // --- Orden temporal declarado (nivel de traza) ----------------------------
 
+  /**
+   * Detalle persistente: una recarga solo cambia su contenido si cambió el
+   * orden declarado, sin reemplazar el `<details>` ni su `<summary>` (foco y
+   * estado abierto se conservan).
+   */
   function pintarOrden(modelo) {
-    const estabaAbierto = Boolean(orden?.open);
-    const nuevo = modelo && modelo.events.length > 0 ? elemento("details", {
-      clase: "inspector-detalle inspector-orden-temporal",
-      atributos: { "data-part": "temporal-order" },
-    }) : null;
-    if (nuevo) {
-      nuevo.append(elemento("summary", { texto: "Orden temporal declarado por la fuente", atributos: { "data-accion": "sumario-orden" } }));
-      let lleno = false;
-      const llenar = () => {
-        if (lleno) return;
-        lleno = true;
-        const ids = modelo.temporalOrder.filter((valor) => typeof valor === "string");
-        nuevo.append(elemento("p", {
-          clase: "nota",
-          texto: "Dato de la fuente (hora observada y luego secuencia). No sustituye el orden de secuencia de las tarjetas ni indica duración o dependencia.",
-        }));
-        if (ids.length === 0) {
-          nuevo.append(elemento("p", { clase: "estado", texto: "La fuente no declaró un orden temporal para esta traza." }));
-          return;
-        }
-        const linea = elemento("p", { clase: "inspector-orden-ids" });
-        linea.append(codigo(ids.join(" → ")));
-        nuevo.append(linea);
-      };
+    const hay = Boolean(modelo && modelo.events.length > 0);
+    const ids = hay ? modelo.temporalOrder.filter((valor) => typeof valor === "string") : [];
+    const firma = hay ? JSON.stringify(ids) : null;
+    if (firma === ordenFirma) return;
+    ordenFirma = firma;
+    ordenIds = ids;
+    if (!hay) {
+      orden?.remove();
+      orden = null;
+      return;
+    }
+    if (!orden) {
+      orden = elemento("details", { clase: "inspector-detalle inspector-orden-temporal", atributos: { "data-part": "temporal-order" } });
+      orden.append(elemento("summary", { texto: "Orden temporal declarado por la fuente", atributos: { "data-accion": "sumario-orden" } }));
       // Se rellena al desplegarlo: una traza de 10 000 hitos no lo pinta de antemano.
-      nuevo.addEventListener("toggle", () => {
-        if (nuevo.open) llenar();
+      orden.addEventListener("toggle", () => {
+        if (orden?.open) llenarOrden();
       });
-      if (estabaAbierto) {
-        llenar();
-        nuevo.open = true;
+      raiz.append(orden);
+    }
+    ordenLleno = false;
+    while (orden.lastChild && orden.lastChild !== orden.firstChild) orden.lastChild.remove();
+    if (orden.open) llenarOrden();
+  }
+
+  function llenarOrden() {
+    if (!orden || ordenLleno) return;
+    ordenLleno = true;
+    orden.append(elemento("p", {
+      clase: "nota",
+      texto: "Dato de la fuente (hora observada y luego secuencia). No sustituye el orden de secuencia de las tarjetas ni indica duración o dependencia.",
+    }));
+    if (ordenIds.length === 0) {
+      orden.append(elemento("p", { clase: "estado", texto: "La fuente no declaró un orden temporal para esta traza." }));
+      return;
+    }
+    const linea = elemento("p", { clase: "inspector-orden-ids" });
+    linea.append(codigo(ordenIds.join(" → ")));
+    orden.append(linea);
+  }
+
+  // --- Estado de lectura (selección de texto y desplazamiento) --------------
+
+  /** Selección de texto dentro de un elemento con `data-texto` del cuerpo, como desplazamientos. */
+  function capturarSeleccion() {
+    const seleccion = globalThis.getSelection?.();
+    if (!seleccion || seleccion.rangeCount === 0 || seleccion.isCollapsed) return null;
+    const rango = seleccion.getRangeAt(0);
+    const nodo = rango.commonAncestorContainer;
+    const dueno = (nodo.nodeType === 1 ? nodo : nodo.parentElement)?.closest?.("[data-texto]");
+    if (!dueno || !cuerpo.contains(dueno)) return null;
+    const previo = document.createRange();
+    previo.selectNodeContents(dueno);
+    previo.setEnd(rango.startContainer, rango.startOffset);
+    const inicio = previo.toString().length;
+    return { clave: dueno.getAttribute("data-texto"), texto: dueno.textContent, inicio, fin: inicio + rango.toString().length };
+  }
+
+  /** Punto (nodo de texto, desplazamiento) del carácter `posicion` dentro de `raizTexto`. */
+  function puntoEn(raizTexto, posicion) {
+    const caminante = document.createTreeWalker(raizTexto, NodeFilter.SHOW_TEXT);
+    let restante = posicion;
+    let ultimo = null;
+    for (let nodo = caminante.nextNode(); nodo; nodo = caminante.nextNode()) {
+      if (restante <= nodo.length) return [nodo, restante];
+      restante -= nodo.length;
+      ultimo = nodo;
+    }
+    return ultimo ? [ultimo, ultimo.length] : null;
+  }
+
+  function restaurarSeleccion(guardada) {
+    if (!guardada) return;
+    const dueno = cuerpo.querySelector(`[data-texto="${guardada.clave}"]`);
+    // Solo si el texto es el mismo: nunca se selecciona otra cosa.
+    if (!dueno || dueno.textContent !== guardada.texto) return;
+    const inicio = puntoEn(dueno, guardada.inicio);
+    const fin = puntoEn(dueno, guardada.fin);
+    if (!inicio || !fin) return;
+    const rango = document.createRange();
+    rango.setStart(...inicio);
+    rango.setEnd(...fin);
+    const seleccion = globalThis.getSelection();
+    seleccion.removeAllRanges();
+    seleccion.addRange(rango);
+  }
+
+  /** Desplazamientos de la región, de la ventana y de los bloques con `data-texto` (p. ej. el JSON). */
+  function capturarDesplazamiento() {
+    const bloques = [...cuerpo.querySelectorAll("[data-texto]")]
+      .filter((nodo) => nodo.scrollTop > 0 || nodo.scrollLeft > 0)
+      .map((nodo) => ({ clave: nodo.getAttribute("data-texto"), top: nodo.scrollTop, left: nodo.scrollLeft }));
+    return { region: container.scrollTop, ventana: [globalThis.scrollX ?? 0, globalThis.scrollY ?? 0], bloques };
+  }
+
+  function restaurarDesplazamiento(guardado) {
+    if (container.scrollTop !== guardado.region) container.scrollTop = guardado.region;
+    for (const { clave, top, left } of guardado.bloques) {
+      const nodo = cuerpo.querySelector(`[data-texto="${clave}"]`);
+      if (nodo) {
+        nodo.scrollTop = top;
+        nodo.scrollLeft = left;
       }
     }
-    const conFoco = Boolean(orden?.contains(document.activeElement));
-    if (orden) orden.remove();
-    orden = nuevo;
-    if (orden) raiz.append(orden);
-    // Una recarga no deja el foco en `<body>` si estaba en este detalle.
-    if (conFoco) orden?.querySelector("summary")?.focus({ preventScroll: true });
+    const [x, y] = guardado.ventana;
+    if (globalThis.scrollX !== x || globalThis.scrollY !== y) globalThis.scrollTo?.(x, y);
   }
 
   // --- Actualización ---------------------------------------------------------
+
+  /**
+   * Todo lo que el cuerpo muestra para el hito: el original, sus relaciones,
+   * la etiqueta de actor y, si declara evidencia, el inventario visible.
+   */
+  function firmaDe(modelo, id, evento) {
+    if (!evento) return "sin-hito";
+    const { outgoing, incoming } = modelo.relationsOf(id);
+    const etiqueta = etiquetasDe(modelo).get(actorKey(evento.actor)) ?? null;
+    const conEvidencia = evidenciasDe(evento).length > 0;
+    return JSON.stringify([evento, outgoing, incoming, etiqueta, conEvidencia ? firmaDeInventario(inventario) : null]);
+  }
 
   function update() {
     if (destruido) return;
@@ -448,42 +563,44 @@ export function mountInspector(container, { getModel, presenter, runKey, invento
     const seleccion = presenter?.state?.().selectedId;
     const evento = modelo && typeof seleccion === "string" ? modelo.byId.get(seleccion) : undefined;
     const id = evento ? seleccion : null;
-    if (modelo !== pintado.modelo) pintarOrden(modelo);
-    // El estado del inventario solo cuenta si el hito declara evidencia.
-    const conEvidencia = Boolean(evento) && evidenciasDe(evento).length > 0;
-    const vigente = (estado) => (conEvidencia ? estado : null);
-    if (modelo === pintado.modelo && id === pintado.id && evento === pintado.evento && vigente(inventario) === pintado.inventario) return;
-    const mismoHito = id === pintado.id && pintado.modelo !== undefined;
-    pintado = { modelo, id, evento, inventario: null };
+    pintarOrden(modelo);
+    // El inventario se pide (o revalida) antes de comparar: forma parte de lo visible.
+    if (evento && evidenciasDe(evento).length > 0) asegurarInventario(modelo);
+    const firma = firmaDe(modelo, id, evento);
+    // Mismo hito con el mismo contenido (p. ej. una recarga de la fuente): nada se repinta.
+    if (id === pintado.id && firma === pintado.firma) return;
+    const mismoHito = id === pintado.id && pintado.id !== undefined;
+    pintado = { id, firma };
     raiz.setAttribute("data-event-id", id ?? "");
 
     const activo = document.activeElement;
     const focoDentro = Boolean(activo && cuerpo.contains(activo));
     const claveFoco = focoDentro ? activo.closest("[data-accion]")?.getAttribute("data-accion") : null;
-    const hijos = contenidoDe(modelo, id, evento);
-    // `contenidoDe` puede pedir el inventario: se registra su estado tras pintar.
-    pintado.inventario = vigente(inventario);
     if (mismoHito) {
-      // Mismo hito (recarga o inventario): sin transición y conservando el foco.
-      cuerpo.replaceChildren(...hijos);
-    } else {
-      // Hito nuevo: un cuerpo nuevo entra con la transición corta del inspector.
-      const nuevo = elemento("div", { clase: "inspector-cuerpo", atributos: { "data-part": "inspector-body" } });
-      nuevo.append(...hijos);
-      cuerpo.replaceWith(nuevo);
-      cuerpo = nuevo;
+      // Mismo hito con cambios: en su sitio, sin transición y conservando la lectura.
+      const seleccionGuardada = capturarSeleccion();
+      const desplazamiento = capturarDesplazamiento();
+      cuerpo.replaceChildren(...contenidoDe(modelo, id, evento));
+      restaurarDesplazamiento(desplazamiento);
+      restaurarSeleccion(seleccionGuardada);
+      // El control enfocado vuelve si sigue existiendo; si no, el foco no se lleva a otro sitio.
+      if (claveFoco) cuerpo.querySelector(`[data-accion="${claveFoco}"]`)?.focus({ preventScroll: true });
+      return;
     }
-    if (focoDentro && (!document.activeElement || document.activeElement === document.body || !cuerpo.contains(document.activeElement))) {
-      const destino = (claveFoco && cuerpo.querySelector(`[data-accion="${claveFoco}"]`)) || cuerpo.querySelector(".inspector-id");
-      destino?.focus({ preventScroll: true });
-    }
+    // Hito nuevo: un cuerpo nuevo entra con la transición corta del inspector.
+    const nuevo = elemento("div", { clase: "inspector-cuerpo", atributos: { "data-part": "inspector-body" } });
+    nuevo.append(...contenidoDe(modelo, id, evento));
+    cuerpo.replaceWith(nuevo);
+    cuerpo = nuevo;
+    // Solo la navegación explícita desde el inspector lleva el foco al encabezado del hito.
+    if (focoDentro && navegacionExplicita === id) cuerpo.querySelector(".inspector-id")?.focus({ preventScroll: true });
   }
 
   return {
     update,
     /** Despliega una sección del hito actual (acción explícita); no mueve el foco. */
     expand(seccionPedida) {
-      if (destruido || !Object.hasOwn(abiertas, seccionPedida)) return;
+      if (destruido || (seccionPedida !== "relaciones" && seccionPedida !== "evidencia")) return;
       abiertas[seccionPedida] = true;
       const parte = seccionPedida === "relaciones" ? "relations" : "evidence";
       const detalles = cuerpo.querySelector(`details[data-part="${parte}"]`);
