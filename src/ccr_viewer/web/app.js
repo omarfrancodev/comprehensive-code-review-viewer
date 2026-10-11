@@ -694,11 +694,16 @@ window.addEventListener("popstate", () => {
 /**
  * Una entrada de Trazabilidad sin `event` es la de la selección inicial, que
  * no se escribe en la URL: el presentador sobrevive entre pestañas, así que se
- * vuelve explícitamente al hito por defecto (el último), sin reproducir.
+ * vuelve explícitamente al hito por defecto (el último), sin reproducir. Con
+ * llegadas pendientes es el último presentado: volver atrás no es navegar a
+ * esos registros y la cola «N nuevos sin presentar» se conserva (§8.2).
  */
 function restaurarHitoPorDefecto() {
   if (!presentador || !modeloTraza || ultimaTraza !== store.getState().selectedRun) return;
-  const porDefecto = modeloTraza.lastId;
+  const actual = presentador.state();
+  const porDefecto = actual.pendingIds.length > 0
+    ? modeloTraza.events[Math.min(actual.presentedCount, modeloTraza.events.length) - 1]?.event_id ?? null
+    : modeloTraza.lastId;
   if (porDefecto && presentador.state().selectedId !== porDefecto) presentador.select(porDefecto, "route");
 }
 

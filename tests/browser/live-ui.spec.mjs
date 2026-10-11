@@ -325,6 +325,27 @@ test.describe("LV-02 último hito activo", () => {
     await expect(contador(page)).toBeHidden();
   });
 
+  test("Atrás a una entrada de Trazabilidad sin event conserva la cola de pendientes", async ({ page }) => {
+    const fuente = await abrirVivo(page);
+    await expect(actual(page)).toHaveAttribute("data-event-id", "E000003");
+    await page.getByRole("tab", { name: "Hallazgos", exact: true }).click();
+    await page.getByRole("tab", { name: "Trazabilidad", exact: true }).click();
+    await marcador(page, "E000002").click();
+    await expect(actual(page)).toHaveAttribute("data-event-id", "E000002");
+    fuente.traza = conHitos(4);
+    await avisar(page);
+    await expect(contador(page)).toHaveText("1 nuevo sin presentar");
+
+    await page.goBack();
+    await expect(page.getByRole("tab", { name: "Hallazgos", exact: true })).toHaveAttribute("aria-selected", "true");
+    await page.goBack();
+    await expect(page.getByRole("tab", { name: "Trazabilidad", exact: true })).toHaveAttribute("aria-selected", "true");
+    // El hito por defecto es el último presentado; la llegada sigue pendiente.
+    await expect(actual(page)).toHaveAttribute("data-event-id", "E000003");
+    await expect(contador(page)).toHaveText("1 nuevo sin presentar");
+    await expect(tarjeta(page, "E000004")).toHaveCount(0);
+  });
+
   test("último fuera de página: «Último activo: E000060» con acceso explícito", async ({ page }) => {
     await abrirVivo(page, { traza: trazaSintetica(60, { chain: "updating" }), evento: "E000001" });
     await expect(actual(page)).toHaveAttribute("data-event-id", "E000001");

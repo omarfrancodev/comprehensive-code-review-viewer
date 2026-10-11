@@ -212,7 +212,8 @@ el token, contenido ni filtros. Un hito inexistente produce un aviso y se
 selecciona uno válido; no se busca otra revisión por parecido. Atrás y Adelante
 restauran la selección y la vista sin iniciar la reproducción; una entrada de
 Trazabilidad sin `event` (la de la selección inicial, que no se escribe en la
-dirección) vuelve al hito por defecto, el último. El token de
+dirección) vuelve al hito por defecto, el último; con llegadas pendientes, el
+último presentado, y «N nuevos sin presentar» se conserva. El token de
 arranque sigue estando sólo en el fragmento y se elimina al canjearlo.
 
 ## Preferencias
