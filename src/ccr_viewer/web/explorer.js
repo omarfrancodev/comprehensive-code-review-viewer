@@ -165,7 +165,12 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
     });
     const resumen = elemento("p", { clase: "busqueda-estado", atributos: { id: estadoId, hidden: true } });
     const mostrar = botonAccion("Mostrar hito seleccionado", mostrarSeleccionado, { atributos: { hidden: true } });
-    campoBusqueda.addEventListener("input", () => buscar(campoBusqueda.value));
+    // Escribir una búsqueda es lectura (§7, §8.2): pausa el recorrido y suspende
+    // el seguimiento antes de filtrar; reanudar sigue siendo explícito.
+    campoBusqueda.addEventListener("input", () => {
+      pausarPorBusqueda();
+      buscar(campoBusqueda.value);
+    });
     // Enter selecciona la siguiente coincidencia en secuencia (con vuelta al principio).
     campoBusqueda.addEventListener("keydown", (evento) => {
       if (evento.key !== "Enter") return;
@@ -530,6 +535,17 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
       seguir = false;
       controles.sincronizar(actual, modelo, false);
     }
+  }
+
+  /**
+   * Buscar deja el recorrido en pausa y la selección donde está: en replay
+   * pausa la reproducción y suspende «Seguir recorrido»; en En Vivo deja de
+   * seguir, así que las llegadas pasan a «N nuevos sin presentar».
+   */
+  function pausarPorBusqueda() {
+    if (destruido) return;
+    if (!estado().paused) presenter.pause("search");
+    suspenderSeguimiento();
   }
 
   /** Un desplazamiento manual del panel suspende el seguimiento. */

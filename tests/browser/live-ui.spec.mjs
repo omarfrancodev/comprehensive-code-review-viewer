@@ -448,6 +448,28 @@ test.describe("LV-04 pausa y cola de lectura", () => {
     await expect(contador(page)).toBeHidden();
   });
 
+  test("escribir en la búsqueda en seguimiento es lectura: la llegada queda en la cola y la selección se conserva", async ({ page }) => {
+    const fuente = await abrirVivo(page, { reloj: true });
+    await enVivo(page).click();
+    await expect(actual(page)).toHaveAttribute("data-event-id", "E000003");
+    await expect(enVivo(page)).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("searchbox", { name: "Buscar hitos" }).pressSequentially("E00000");
+    await expect(enVivo(page)).toHaveAttribute("aria-pressed", "false");
+    await expect(reanudar(page)).toBeVisible();
+
+    fuente.traza = conHitos(4);
+    await avisarConReloj(page);
+    await expect(contador(page)).toHaveText("1 nuevo sin presentar");
+    await expect(actual(page)).toHaveAttribute("data-event-id", "E000003");
+    await expect(inspector(page)).toHaveAttribute("data-event-id", "E000003");
+    await expect(enVivo(page)).toHaveAttribute("aria-pressed", "false");
+
+    // «Reanudar En Vivo» sigue siendo explícito: reconoce la cola y selecciona el último.
+    await reanudar(page).click();
+    await expect(inspector(page)).toHaveAttribute("data-event-id", "E000004");
+    await expect(contador(page)).toBeHidden();
+  });
+
   test("enfocar «Copiar JSON» en seguimiento es lectura: el foco y el hito se conservan; «Seguir recorrido» retoma", async ({ page }) => {
     const fuente = await abrirVivo(page, { reloj: true });
     await enVivo(page).click();

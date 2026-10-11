@@ -178,6 +178,25 @@ test.describe("revelado progresivo del elemento", () => {
     expect(await etapa(page, "E000001", "contenido")).toBeGreaterThan(congelado);
   });
 
+  test("escribir en la búsqueda durante «Reproducir» pausa el recorrido y conserva la selección", async ({ page }) => {
+    await abrirTraza(page);
+    await reiniciarYReproducir(page);
+    const seguir = boton(page, "Seguir recorrido");
+    await expect(seguir).toHaveAttribute("aria-pressed", "true");
+    // Sin Enter: solo escribir ya es lectura.
+    await page.getByRole("searchbox", { name: "Buscar hitos" }).pressSequentially("E000001");
+    await expect(boton(page, "Reproducir")).toBeVisible();
+    await expect(seguir).toHaveAttribute("aria-pressed", "false");
+    await page.clock.runFor(5000);
+    await expect(tarjetaActual(page)).toHaveAttribute("data-event-id", "E000001");
+    await expect(page.locator("#inspector [data-part=\"inspector\"]")).toHaveAttribute("data-event-id", "E000001");
+    expect(new URL(page.url()).searchParams.get("event")).toBe("E000001");
+    await expect(boton(page, "Reproducir")).toBeVisible();
+    // Reanudar sigue siendo explícito.
+    await boton(page, "Reproducir").click();
+    await expect(boton(page, "Pausar")).toBeVisible();
+  });
+
   test("«Mostrar tarjeta completa» termina el efecto y no reanuda", async ({ page }) => {
     await abrirTraza(page);
     await boton(page, "Reiniciar").click();

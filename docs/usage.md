@@ -247,7 +247,9 @@ dirección indique otro.
   siguiente», «Ir al último», velocidad 0.5×/1×/2×/4× y un deslizador de
   posición. «Reiniciar» muestra sólo el primer hito y «Reproducir» incorpora los
   siguientes. La búsqueda recorre el modelo completo (actor, ID, tipo, estado y
-  resumen).
+  resumen). Escribir en ella pausa el recorrido y suspende el seguimiento sin
+  cambiar el hito seleccionado; se reanuda sólo con «Reproducir», «Seguir
+  recorrido» o «Reanudar En Vivo».
 - **Tarjetas.** Una lista lineal de hasta 50 tarjetas por página, en orden de
   secuencia, con metadata breve, resumen, estado original y acciones de
   relaciones y evidencia (sólo cuando el hito las declara). Seleccionar una
@@ -299,8 +301,8 @@ tarjetas ni actores.
   anima el más reciente y los anteriores aparecen completos.
 - Al **pausar**, la recepción continúa: los IDs nuevos se acumulan en «N nuevos
   sin presentar». Interactuar con el inspector (por ejemplo, abrir el JSON
-  original o enfocar un botón de copia), seleccionar un hito a mano o desactivar
-  «Seguir recorrido» tiene el mismo efecto: el hito, el foco y el desplazamiento
+  original o enfocar un botón de copia), seleccionar un hito a mano, escribir en
+  la búsqueda o desactivar «Seguir recorrido» tiene el mismo efecto: el hito, el foco y el desplazamiento
   se conservan. «Mostrar nuevos» los incorpora sin desplazar ni reanudar, y
   «Reanudar En Vivo» (o «Seguir recorrido») reconoce la cola y vuelve al último
   hito.
