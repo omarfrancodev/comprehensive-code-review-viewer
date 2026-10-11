@@ -54,10 +54,22 @@ export function mountShell(doc = document) {
   conIcono(retorno, "volver", doc);
   conIcono(conexion, "punto", doc);
 
-  /** Región polite: un mensaje por cambio, nunca repetido por redibujos. */
-  function announce(text) {
+  /**
+   * Región polite: un mensaje por cambio, nunca repetido por redibujos. Un
+   * texto igual al vigente no se repite, salvo con `{ repeat: true }`: lo usa
+   * quien ya deduplica por su propio cambio (p. ej. cada aviso de la traza,
+   * con su ID). La repetición alterna un espacio final no separable para que
+   * los lectores perciban un contenido nuevo.
+   */
+  function announce(text, { repeat = false } = {}) {
     const mensaje = String(text ?? "").trim();
-    if (!mensaje || !regions.status || regions.status.textContent === mensaje) return;
+    if (!mensaje || !regions.status) return;
+    const vigente = regions.status.textContent;
+    if (vigente.trim() === mensaje) {
+      if (!repeat) return;
+      regions.status.textContent = vigente === mensaje ? `${mensaje} ` : mensaje;
+      return;
+    }
     regions.status.textContent = mensaje;
   }
 

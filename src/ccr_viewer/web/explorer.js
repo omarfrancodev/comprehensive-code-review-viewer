@@ -13,15 +13,21 @@
  * `presenter.state().reveal` y escribe las etapas en esa tarjeta. Se cancela
  * al pausar, al terminar el revelado, con movimiento reducido y al desmontar.
  *
- * Sin En Vivo (Tarea 12). Las relaciones hacia otro hito de esta traza se
- * resuelven aquí como selección explícita; el resto (hallazgos, checks, otra
- * corrida, evidencia) sale por `onNavigate`.
+ * En Vivo (§8): los controles (`live-controls.js`) leen el mismo presentador;
+ * tarjetas y timeline marcan el último hito activo. Si ese hito no está en la
+ * página o el filtro actuales, los controles ofrecen un acceso explícito a él.
+ * Con `processing` y sin hitos se muestra «Esperando el primer registro».
+ *
+ * Las relaciones hacia otro hito de esta traza se resuelven aquí como
+ * selección explícita; el resto (hallazgos, checks, otra corrida, evidencia)
+ * sale por `onNavigate`.
  */
 
 import { abrirListaActores, crearFranjaActores, etiquetasDeActores } from "./actors.js";
 import { crearTarjetas } from "./cards.js";
 import { botonAccion, elemento, mostrarEnPanel, textoDe } from "./dom.js";
 import { mountInspector } from "./inspector.js";
+import { mountLiveControls } from "./live-controls.js";
 import { actorKey } from "./present.js";
 import { crearControles, crearTimeline } from "./timeline.js";
 import { buildTraceModel, WINDOW_SIZE } from "./trace-model.js";
@@ -112,7 +118,13 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
     onDesplazar: alDesplazarTarjetas,
     onAccion: alAccionDeTarjeta,
   });
-  raiz.append(cabecera, vacio, franja.elemento, timeline.elemento, controles.elemento, buscador.elemento, tarjetas.elemento);
+  raiz.append(cabecera);
+  const vivo = mountLiveControls(raiz, {
+    presenter,
+    isMounted: (id) => tarjetas.li(id) !== null,
+    onShowLast: irAlUltimoActivo,
+  });
+  raiz.append(vacio, franja.elemento, timeline.elemento, controles.elemento, buscador.elemento, tarjetas.elemento);
   container.replaceChildren(raiz);
   const ficha = inspector
     ? mountInspector(inspector, { getModel: () => modelo, presenter, runKey, inventory, onNavigate: navegarDesdeInspector })
@@ -199,13 +211,22 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
     }
     diagnosticos.hidden = diagnosticos.childElementCount === 0;
     const sinHitos = modelo.events.length === 0;
-    vacio.hidden = !sinHitos;
-    vacio.textContent = !sinHitos ? "" : modelo.diagnostics.length > 0
-      ? "La traza no pudo interpretarse; revisa los diagnósticos."
-      : "Esta corrida no conserva hitos registrados.";
+    pintarVacio(estado());
     for (const parte of [franja.elemento, timeline.elemento, controles.elemento, buscador.elemento, tarjetas.elemento]) {
       parte.hidden = sinHitos;
     }
+  }
+
+  /** Traza sin hitos: espera del primer registro (`processing`) o ausencia declarada. */
+  function pintarVacio(actual) {
+    const sinHitos = modelo.events.length === 0;
+    vacio.hidden = !sinHitos;
+    const texto = !sinHitos ? "" : actual.waitingFirst
+      ? "Esperando el primer registro"
+      : modelo.diagnostics.length > 0
+        ? "La traza no pudo interpretarse; revisa los diagnósticos."
+        : "Esta corrida no conserva hitos registrados.";
+    if (vacio.textContent !== texto) vacio.textContent = texto;
   }
 
   function pintarListas(cambiados = SIN_CAMBIOS) {
@@ -223,6 +244,8 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
     tarjetas.render(modelo, ids, { start: inicioPagina, end: finPagina, total: totalPagina, busqueda: Boolean(resultados) }, etiquetas, cambiados, mensaje);
     tarjetas.sincronizar(actual, modelo);
     scrollEsperado = tarjetas.panel.scrollTop;
+    // La página o el filtro cambiaron: el acceso al último activo depende de ello.
+    vivo.update();
   }
 
   function pintarBusqueda() {
@@ -306,7 +329,11 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
       timeline.seleccionar(id);
     }
     controles.sincronizar(actual, modelo, seguirActivo(actual));
+    timeline.marcarFuente(actual.lastActiveId, actual.loader);
+    pintarVacio(actual);
+    vivo.update();
     raiz.dataset.playback = actual.paused ? "paused" : "playing";
+    raiz.dataset.live = actual.mode !== "live" ? "off" : actual.paused ? "paused" : "following";
     programarMuestreo(actual);
   }
 
@@ -449,6 +476,16 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
     seleccionar(siguiente, "search");
   }
 
+  /** Acceso explícito al último activo fuera de página o filtro: limpia la búsqueda si lo oculta. */
+  function irAlUltimoActivo(id) {
+    if (destruido || !modelo.byId.has(id)) return;
+    if (resultados && !posiciones.has(id)) {
+      buscador.campo.value = "";
+      buscar("");
+    }
+    seleccionar(id, "live");
+  }
+
   function mostrarSeleccionado() {
     buscador.campo.value = "";
     buscar("");
@@ -525,6 +562,7 @@ export function mountExplorer(container, { model, presenter, runKey, onSelect, i
       detenerMuestreo();
       desuscribir();
       cerrarDialogo?.();
+      vivo.destroy();
       ficha?.destroy();
       raiz.remove();
     },

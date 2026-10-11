@@ -22,9 +22,14 @@
  * Acciones (§6.3): «Relaciones (n)» y «Evidencia (n)» solo cuando el hito las
  * declara (coste de teclado acotado); seleccionan el hito y despliegan su
  * sección del inspector sin mover el foco. «Copiar resumen» sigue disponible.
+ *
+ * Fuente (§8): con el cierre en `processing`, la tarjeta del último hito
+ * aceptado por secuencia lleva `data-active-source="true"` y el indicador de
+ * fuente, independiente de la selección y del revelado.
  */
 
 import { botonAccion, elemento, fijarInactivo, reconciliarHijos, textoDe } from "./dom.js";
+import { fijarCargaFuente, nodoCargaFuente } from "./live-controls.js";
 import { actorKey, actorLabel } from "./present.js";
 import { evidenciasDe } from "./relations.js";
 import { nodoTiempo } from "./timeline.js";
@@ -189,8 +194,26 @@ export function crearTarjetas({ onSelect, onPagina, onDesplazar, onAccion }) {
     Object.assign(entrada, { boton, botones, resumen, recibido, etiqueta, conteos: firmaDe(conteos), revelado: null });
   }
 
+  /** Indicador de fuente sobre la tarjeta (`tipo`: `active`, `static` o `null`). */
+  function marcarFuente(entrada, tipo) {
+    const { li } = entrada;
+    if (!tipo) {
+      if (!entrada.fuente) return;
+      entrada.fuente.remove();
+      entrada.fuente = null;
+      delete li.dataset.activeSource;
+      return;
+    }
+    entrada.fuente ??= nodoCargaFuente();
+    fijarCargaFuente(entrada.fuente, tipo);
+    // `llenar` reconstruye los hijos: el indicador vuelve a su sitio.
+    if (entrada.fuente.parentNode !== li) li.append(entrada.fuente);
+    if (li.dataset.activeSource !== "true") li.dataset.activeSource = "true";
+  }
+
   function sincronizar(actual, modelo) {
     for (const [id, entrada] of cache) {
+      marcarFuente(entrada, id === actual.lastActiveId && actual.loader !== "off" ? actual.loader : null);
       const estado = estadoDeTarjeta(id, modelo, actual);
       if (entrada.li.dataset.state !== estado) entrada.li.dataset.state = estado;
       entrada.recibido.hidden = estado !== "received";

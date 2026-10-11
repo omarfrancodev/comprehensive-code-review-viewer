@@ -274,6 +274,67 @@ function paginaDeBiblioteca(biblioteca, url) {
 }
 
 /**
+ * Sustituye `EventSource` por una fuente controlable (solo pruebas, vía
+ * `addInitScript`; nunca forma parte del producto):
+ *
+ * - `window.__ccr.emitNotice(aviso)` entrega un aviso `notice` completo.
+ * - `window.__ccr.setConnection("open" | "error")` simula la apertura o la
+ *   caída del canal (`onopen` / `onerror`).
+ * - `window.__ccr.closed` indica si la aplicación cerró la suscripción.
+ *
+ * La fuente se abre sola al crearse, como un canal sano sin avisos.
+ */
+export async function installFakeEventSource(page) {
+  await page.addInitScript(() => {
+    const control = { fuente: null, closed: false, sources: 0 };
+    class FuenteFalsa extends EventTarget {
+      constructor(url) {
+        super();
+        this.url = String(url);
+        this.readyState = 0;
+        this.onopen = null;
+        this.onerror = null;
+        control.fuente = this;
+        control.sources += 1;
+        control.closed = false;
+        queueMicrotask(() => {
+          if (this.readyState === 2) return;
+          this.readyState = 1;
+          this.onopen?.(new Event("open"));
+        });
+      }
+      close() {
+        this.readyState = 2;
+        control.closed = true;
+      }
+    }
+    window.EventSource = FuenteFalsa;
+    window.__ccr = {
+      emitNotice(aviso) {
+        const fuente = control.fuente;
+        if (!fuente || fuente.readyState === 2) return false;
+        fuente.dispatchEvent(new MessageEvent("notice", { data: JSON.stringify(aviso) }));
+        return true;
+      },
+      setConnection(estado) {
+        const fuente = control.fuente;
+        if (!fuente || fuente.readyState === 2) return;
+        if (estado === "open") {
+          fuente.readyState = 1;
+          fuente.onopen?.(new Event("open"));
+        } else {
+          fuente.readyState = 0;
+          fuente.onerror?.(new Event("error"));
+        }
+      },
+      get closed() {
+        return control.closed;
+      },
+    };
+  });
+}
+
+/**
  * Intercepta las rutas de la API con respuestas sintéticas y abre la aplicación.
  * La política de seguridad del servidor no se relaja en ningún momento.
  *
@@ -282,9 +343,11 @@ function paginaDeBiblioteca(biblioteca, url) {
  * - `library`: `{ items, total }` (p. ej. `bibliotecaSintetica(1000)`) que
  *   sustituye a la biblioteca de una corrida; se filtra y pagina como el servidor.
  * - `esperar`: `false` no espera a que aparezca la primera fila ni un estado.
+ * - `onRun(route)`: responde `/api/runs/<clave>` en lugar de la revisión fija
+ *   (vistas que cambian con el tiempo, errores de sesión).
  */
 export async function openFixture(page, opciones = {}) {
-  const { variant = "final_v7", ruta = "/", library = null, esperar = true } =
+  const { variant = "final_v7", ruta = "/", library = null, esperar = true, onRun = null } =
     typeof opciones === "string" ? { variant: opciones } : opciones;
   const envoltura = (data) => ({ status: 200, contentType: "application/json", body: JSON.stringify(data) });
   const cuerpoBiblioteca = (url) => (library ? paginaDeBiblioteca(library, url) : BIBLIOTECA);
@@ -319,9 +382,9 @@ export async function openFixture(page, opciones = {}) {
     ),
   );
   await page.route("**/api/runs/*", (ruta) =>
-    ruta.fulfill(
-      envoltura({ api_version: 1, data: REVISION_SINTETICA, diagnostics: [] }),
-    ),
+    onRun
+      ? onRun(ruta)
+      : ruta.fulfill(envoltura({ api_version: 1, data: REVISION_SINTETICA, diagnostics: [] })),
   );
   await page.route("**/api/events", (ruta) =>
     ruta.fulfill({ status: 200, contentType: "text/event-stream", body: ": latencia\n\n" }),

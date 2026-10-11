@@ -6,9 +6,13 @@
  * de como máximo 50 marcadores; la forma depende de la base temporal (círculo,
  * rombo o hueco) y el nombre accesible la describe sin depender del color.
  * Los tiempos se muestran como los declara la fuente, con su base.
+ *
+ * El punto del último hito activo (§8) lleva `data-active-source="true"`, el
+ * mismo indicador de fuente que su tarjeta y la etiqueta en su nombre accesible.
  */
 
 import { botonAccion, elemento, fijarInactivo, reconciliarHijos } from "./dom.js";
+import { etiquetaFuente, fijarCargaFuente, nodoCargaFuente } from "./live-controls.js";
 import { VELOCIDADES } from "./playback.js";
 import { basisLabel, basisShape, formatInstant } from "./present.js";
 
@@ -93,14 +97,41 @@ export function crearTimeline({ onSelect, onVentana }) {
   let modelo = null;
   let inicio = 0;
   let cantidad = 0;
+  // Último hito activo y tipo de su indicador (`active`/`static`), o nada.
+  let fuente = { id: null, tipo: null };
+
+  /** Nombre accesible: ID, hora y base; y la etiqueta de fuente si es el último activo. */
+  function etiquetar(entrada) {
+    const nombre = entrada.tipoFuente ? `${entrada.nombre} · ${etiquetaFuente(entrada.tipoFuente)}` : entrada.nombre;
+    entrada.boton.setAttribute("aria-label", nombre);
+    entrada.boton.title = nombre;
+  }
 
   function actualizar(entrada, evento) {
     const tiempo = tiempoDeHito(evento);
-    const nombre = `${evento.event_id} · ${tiempo.texto} · ${tiempo.base}`;
+    entrada.nombre = `${evento.event_id} · ${tiempo.texto} · ${tiempo.base}`;
     entrada.boton.dataset.basis = typeof evento.temporal_basis === "string" ? evento.temporal_basis : "";
     entrada.boton.dataset.shape = basisShape(evento.temporal_basis);
-    entrada.boton.setAttribute("aria-label", nombre);
-    entrada.boton.title = nombre;
+    etiquetar(entrada);
+  }
+
+  /** Aplica el indicador de fuente solo a los puntos cuyo estado cambia. */
+  function aplicarFuente() {
+    for (const [clave, entrada] of cache) {
+      const tipo = clave === fuente.id ? fuente.tipo : null;
+      if ((entrada.tipoFuente ?? null) === tipo) continue;
+      entrada.tipoFuente = tipo;
+      if (tipo) {
+        entrada.boton.dataset.activeSource = "true";
+        entrada.carga ??= nodoCargaFuente({ oculto: true });
+        fijarCargaFuente(entrada.carga, tipo);
+        entrada.li.append(entrada.carga);
+      } else {
+        delete entrada.boton.dataset.activeSource;
+        entrada.carga?.remove();
+      }
+      etiquetar(entrada);
+    }
   }
 
   function crear(evento) {
@@ -151,6 +182,7 @@ export function crearTimeline({ onSelect, onVentana }) {
       }
       for (const clave of [...cache.keys()]) if (!vigentes.has(clave)) cache.delete(clave);
       reconciliarHijos(lista, nodos);
+      aplicarFuente();
       linea.style.setProperty("--marcadores", String(Math.max(1, cantidad)));
       const paginado = ventana.total > ventana.end - ventana.start || ventana.start > 0;
       anterior.hidden = !paginado;
@@ -163,6 +195,13 @@ export function crearTimeline({ onSelect, onVentana }) {
       seleccionar(seleccionado);
     },
     seleccionar,
+    /** Último hito activo (`id`) con su indicador (`active`/`static`); `null` lo retira. */
+    marcarFuente(id, tipo) {
+      const siguiente = typeof id === "string" && (tipo === "active" || tipo === "static") ? { id, tipo } : { id: null, tipo: null };
+      if (siguiente.id === fuente.id && siguiente.tipo === fuente.tipo) return;
+      fuente = siguiente;
+      aplicarFuente();
+    },
     /** Nodo estable que recibe el foco si el enfocado se retiró: el marcador, la navegación o el primero. */
     respaldoDeFoco(id) {
       return cache.get(id)?.boton
@@ -220,7 +259,8 @@ export function crearControles(acciones) {
       const posicion = id !== null && modelo.index.has(id) ? modelo.index.get(id) : -1;
       const reproduciendo = !actual.paused;
       alternar.textContent = reproduciendo ? "Pausar" : "Reproducir";
-      const sinSiguiente = !reproduciendo && !actual.canPlay;
+      // En En Vivo el botón pausa o reanuda el seguimiento: siempre actúa.
+      const sinSiguiente = actual.mode !== "live" && !reproduciendo && !actual.canPlay;
       fijarInactivo(alternar, sinSiguiente);
       motivo.hidden = !(sinSiguiente && total > 0 && posicion === total - 1);
       if (motivo.hidden) alternar.removeAttribute("aria-describedby");

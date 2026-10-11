@@ -754,7 +754,8 @@ button[aria-disabled="true"] {
 }
 
 /* Retorno a la revisión anterior tras abrir otra corrida desde una relación. */
-.retorno-contexto {
+.retorno-contexto,
+.aviso-fuente {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -767,12 +768,159 @@ button[aria-disabled="true"] {
   background: var(--superficie);
 }
 
-.retorno-contexto[hidden] {
+.retorno-contexto[hidden],
+.aviso-fuente[hidden] {
   display: none;
 }
 
 .retorno-contexto .nota {
   margin: 0;
+}
+
+/* --- En Vivo e indicador de fuente (§8) -------------------------------------
+ * El indicador de fuente (`source-loader`) representa el cierre `processing`:
+ * persiste tras el revelado y es distinto del brillo de presentación. Sin
+ * conexión, en espera de recarga o con movimiento reducido es un icono
+ * estático; en la pausa de En Vivo su giro se congela.
+ */
+
+/* Banda de la fuente: misma forma que el retorno de contexto. */
+.aviso-fuente {
+  border-left-color: var(--aviso);
+}
+
+.aviso-fuente[data-code="session"] {
+  border-left-color: var(--error);
+}
+
+.aviso-fuente-texto {
+  margin: 0;
+  font-weight: 600;
+}
+
+.explorador-vivo {
+  display: grid;
+  gap: var(--espacio-2);
+  min-width: 0;
+}
+
+.vivo-fila {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espacio-2);
+}
+
+.vivo-boton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--espacio-2);
+}
+
+.vivo-punto {
+  width: 8px;
+  height: 8px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+
+.vivo-boton[aria-pressed="true"] {
+  border-color: var(--acento);
+  background: var(--acento-suave);
+  color: var(--acento);
+}
+
+.vivo-boton[aria-pressed="true"] .vivo-punto {
+  background: currentColor;
+}
+
+.vivo-contador {
+  color: var(--aviso);
+  font-size: var(--tam-meta);
+  font-weight: 600;
+}
+
+.vivo-motivo,
+.vivo-fuente,
+.vivo-aviso {
+  margin: 0;
+  font-size: var(--tam-meta);
+}
+
+.vivo-fuente {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espacio-1) var(--espacio-2);
+  overflow-wrap: anywhere;
+}
+
+.vivo-contador[hidden],
+.vivo-motivo[hidden],
+.vivo-fuente[hidden],
+.vivo-aviso[hidden] {
+  display: none;
+}
+
+.tarjeta[data-active-source="true"] {
+  border-color: var(--acento);
+  border-left-width: 4px;
+}
+
+.fuente-carga {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--espacio-2);
+  color: var(--acento);
+  font-size: var(--tam-meta);
+}
+
+.fuente-icono {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--acento-suave);
+  border-top-color: var(--acento);
+  border-radius: 50%;
+  animation: giro-fuente 900ms linear infinite;
+}
+
+.timeline-punto {
+  position: relative;
+}
+
+.timeline-punto .fuente-carga {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.timeline-punto .fuente-icono {
+  width: 22px;
+  height: 22px;
+}
+
+.fuente-carga[data-loader="static"] {
+  color: var(--texto-suave);
+}
+
+/* Estático: sin giro ni sugerencia de recepción. */
+.fuente-carga[data-loader="static"] .fuente-icono {
+  border-color: currentColor;
+  border-style: dashed;
+  animation: none;
+}
+
+.explorador[data-live="paused"] .fuente-icono {
+  animation-play-state: paused;
+}
+
+@keyframes giro-fuente {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* --- Táctil y una columna ------------------------------------------------- */

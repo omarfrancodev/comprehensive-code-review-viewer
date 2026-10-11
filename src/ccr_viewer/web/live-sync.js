@@ -36,7 +36,7 @@ const relojReal = {
 };
 
 /** Una vista está en transición si declara `updating` o un diagnóstico de transición. */
-function enTransicion(view) {
+export function viewInTransition(view) {
   if (view?.updating === true) return true;
   const diagnosticos = Array.isArray(view?.diagnostics) ? view.diagnostics : [];
   return diagnosticos.some((d) => typeof d?.code === "string" && TRANSICION.has(d.code));
@@ -44,7 +44,7 @@ function enTransicion(view) {
 
 /** Mismo cierre original en A y B y ninguna de las dos en transición. */
 function sonCoherentes(a, b) {
-  if (enTransicion(a) || enTransicion(b)) return false;
+  if (viewInTransition(a) || viewInTransition(b)) return false;
   return JSON.stringify(a?.closure) === JSON.stringify(b?.closure);
 }
 

@@ -7,6 +7,10 @@
  * archivo; otra corrida se abre con una acción explícita que guarda en memoria
  * un único contexto previo `{run, tab, eventId}` para «Volver a la revisión
  * anterior». La dirección sigue limitada a `?run&tab&event`.
+ *
+ * Avisos en vivo: la biblioteca se recarga por su cuenta (`catalog_changed`,
+ * `resync`, `run_changed`); la vista y la traza de la corrida abierta las
+ * recarga `live-reload.js` con lecturas coherentes, con su propio contador.
  */
 
 import {
@@ -22,6 +26,8 @@ import { createStore } from "./store.js";
 import { mountExplorer } from "./explorer.js";
 import { createPresenter } from "./presenter.js";
 import { buildTraceModel, reconcileTrace } from "./trace-model.js";
+import { createLiveReload } from "./live-reload.js";
+import { viewInTransition } from "./live-sync.js";
 import {
   mountLibrary,
   renderArchive,
@@ -59,8 +65,6 @@ let modeloTraza = null;
 let ultimaTraza = null;
 // Explorador montado en Trazabilidad y corrida a la que pertenece.
 let explorador = null;
-// Último aviso del presentador anunciado: `notice` persiste hasta el siguiente.
-let ultimoAvisoTraza = null;
 // El desplazamiento se guarda aparte: despachar en cada evento de scroll
 // redibujaría la pantalla entera y perdería el foco de los controles.
 let desplazamiento = 0;
@@ -101,6 +105,9 @@ const raizBoton = document.getElementById("raiz");
 const temaNodo = document.getElementById("tema");
 const retornoNodo = elemento("div", { clase: "retorno-contexto", atributos: { "data-part": "return-context", hidden: true } });
 cabeceraNodo.after(retornoNodo);
+// Banda de la fuente: datos no actualizados, archivo en actualización o sesión caducada.
+const avisoFuenteNodo = elemento("div", { clase: "aviso-fuente", atributos: { "data-part": "source-notice", hidden: true } });
+retornoNodo.after(avisoFuenteNodo);
 
 const store = createStore({ prefs: loadPrefs() });
 const biblioteca = mountLibrary(bibliotecaNodo, { getState: store.getState, dispatch: store.dispatch });
@@ -195,9 +202,54 @@ function destruirExplorador() {
   explorador = null;
 }
 
-/** Contexto de cierre de la vista para el presentador (En Vivo llega en la Tarea 12). */
+// Cancela la suscripción a `/api/events` (se asigna al suscribirse).
+let cancelarAvisos = () => {};
+
+/** Recargas coherentes de la corrida abierta (vista + traza) y su banda de estado. */
+const vivo = createLiveReload({
+  api: { getRun, getTrace },
+  runKey: () => store.getState().selectedRun,
+  trace: () => (presentador && modeloTraza && ultimaTraza === store.getState().selectedRun
+    ? { presenter: presentador, model: modeloTraza }
+    : null),
+  onView: (vista) => store.dispatch({ type: "viewLoaded", view: vista }),
+  onTrace: (modelo, diff) => {
+    modeloTraza = modelo;
+    if (explorador?.run === store.getState().selectedRun) explorador.api.update(modelo, diff);
+  },
+  onStatus: pintarAvisoFuente,
+  announce: (texto, opciones) => shell.announce(texto, opciones),
+  onSessionExpired: () => cancelarAvisos(),
+});
+
+/** Banda de la fuente con «Reintentar» cuando procede; la sesión caducada no se reintenta. */
+function pintarAvisoFuente(estado) {
+  if (!estado) {
+    avisoFuenteNodo.hidden = true;
+    avisoFuenteNodo.replaceChildren();
+    delete avisoFuenteNodo.dataset.code;
+    return;
+  }
+  avisoFuenteNodo.dataset.code = estado.code;
+  const texto = elemento("p", { clase: "aviso-fuente-texto", texto: estado.text });
+  const conFoco = avisoFuenteNodo.contains(document.activeElement);
+  if (estado.retry) {
+    const boton = elemento("button", { texto: "Reintentar", atributos: { type: "button" } });
+    boton.addEventListener("click", () => vivo.retry());
+    avisoFuenteNodo.replaceChildren(texto, boton);
+    if (conFoco) boton.focus({ preventScroll: true });
+  } else {
+    avisoFuenteNodo.replaceChildren(texto);
+  }
+  avisoFuenteNodo.hidden = false;
+}
+
+/**
+ * Contexto de cierre de la vista para el presentador: una vista en transición
+ * (`view.updating` o diagnóstico de snapshot) es un cierre parcial.
+ */
 function contextoDeTraza(vista) {
-  return { closureState: vista?.closure?.state };
+  return { closureState: vista?.closure?.state, partial: viewInTransition(vista), connected: vivo.connected() };
 }
 
 /**
@@ -220,12 +272,9 @@ function crearPresentador(modelo, vista) {
     }
   }
   let ultimaSeleccion = control.state().selectedId;
+  // Cada aviso del presentador (llegadas, cierre, prefijo) se anuncia una vez.
+  vivo.watch(control);
   control.subscribe((estado) => {
-    // `notice` persiste hasta el siguiente: cada ID se anuncia una sola vez.
-    if (estado.notice && estado.notice.id !== ultimoAvisoTraza) {
-      ultimoAvisoTraza = estado.notice.id;
-      shell.announce(estado.notice.text);
-    }
     if (estado.selectedId === ultimaSeleccion) return;
     ultimaSeleccion = estado.selectedId;
     if (estado.selectedId !== store.getState().selectedEventId) store.dispatch({ type: "selectEvent", eventId: estado.selectedId });
@@ -348,7 +397,6 @@ function dibujarRevision() {
     presentador?.destroy();
     presentador = null;
     modeloTraza = null;
-    ultimoAvisoTraza = null;
     ultimaTraza = estado.selectedRun;
   }
   if (estado.tab !== "trazabilidad") {
@@ -417,11 +465,14 @@ function dibujarRevision() {
         elemento("p", { clase: "estado estado--error", texto: `No se pudieron cargar los documentos: ${error.message}` }),
       );
     });
+  } else if (conservarExplorador) {
+    // Recarga de la misma corrida: `live-reload.js` ya entregó al presentador y
+    // al explorador montado el modelo coherente; aquí no se vuelve a pedir.
   } else {
-    // La trazabilidad se interpreta antes de mostrarse; una recarga de la
-    // misma corrida actualiza el explorador montado sin reconstruirlo.
+    // La trazabilidad se interpreta antes de mostrarse. Volver a la pestaña con
+    // un presentador vivo compara con su modelo completo anterior.
     const clave = estado.selectedRun;
-    if (!conservarExplorador) revisionNodo.append(elemento("p", { clase: "estado", texto: "Cargando trazabilidad…" }));
+    revisionNodo.append(elemento("p", { clase: "estado", texto: "Cargando trazabilidad…" }));
     void getTrace(clave)
       .then((traza) => {
         if (generation !== currentGeneration || store.getState().selectedRun !== clave) return;
@@ -429,10 +480,10 @@ function dibujarRevision() {
         let diff = null;
         if (!presentador) {
           // Corrida nueva: sin modelo anterior no hay «nuevos» que comparar.
-          presentador = crearPresentador(modelo, estado.view);
+          presentador = crearPresentador(modelo, store.getState().view ?? estado.view);
         } else {
           diff = reconcileTrace(modeloTraza, modelo);
-          presentador.update(modelo, contextoDeTraza(estado.view), diff);
+          presentador.update(modelo, contextoDeTraza(store.getState().view ?? estado.view), diff);
         }
         modeloTraza = modelo;
         if (explorador?.run === clave) {
@@ -682,6 +733,8 @@ async function iniciar() {
     if (estado.selectedRun !== previousKey) {
       previousKey = estado.selectedRun;
       desplazamiento = 0;
+      // Las recargas agrupadas o en curso de la corrida anterior dejan de valer.
+      vivo.runChanged();
       // La clave de la URL deja de estar pendiente si la selección se mueve.
       if (rutaPendiente && rutaPendiente !== previousKey) rutaPendiente = null;
       errorRevision = null;
@@ -716,18 +769,35 @@ async function iniciar() {
   aplicarRutaInicial();
   await cargarBiblioteca();
 
+  let avisosActivos = true;
   const unsubscribe = subscribeNotices(
     (notice) => {
+      if (!avisosActivos) return;
       const key = store.getState().selectedRun;
       if (!notice.run_key || notice.run_key === key) store.dispatch({ type: "notice", notice });
+      // La biblioteca y la corrida abierta se recargan por separado.
       if (["catalog_changed", "resync", "run_changed"].includes(notice.kind)) {
         void cargarBiblioteca();
       }
-      if (key && (!notice.run_key || notice.run_key === key)) void cargarRevision(key);
+      vivo.notice(notice);
     },
-    (state) => store.dispatch({ type: "setConnection", state }),
+    (state) => {
+      if (avisosActivos) store.dispatch({ type: "setConnection", state });
+    },
   );
-  window.addEventListener("pagehide", () => { unsubscribe(); destruirExplorador(); presentador?.destroy(); }, { once: true });
+  // Sesión caducada: el suscriptor se detiene; no hay reintentos ni tokens guardados.
+  cancelarAvisos = () => {
+    avisosActivos = false;
+    unsubscribe();
+  };
+  let conexionPrevia = store.getState().connection;
+  vivo.connection(conexionPrevia);
+  store.subscribe((estado) => {
+    if (estado.connection === conexionPrevia) return;
+    conexionPrevia = estado.connection;
+    vivo.connection(estado.connection);
+  });
+  window.addEventListener("pagehide", () => { cancelarAvisos(); vivo.destroy(); destruirExplorador(); presentador?.destroy(); }, { once: true });
 
   dibujar();
 }

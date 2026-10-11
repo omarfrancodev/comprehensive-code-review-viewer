@@ -16,7 +16,8 @@ test("SSE mantiene el cursor pausado y publica el resultado sin alterar el archi
     fixtureOperation(server.run, "prepare_to_discovery");
     await expect(tarjetas).toHaveCount(2, { timeout: 15000 });
     await expect(seleccionada).toHaveAttribute("data-event-id", selected);
-    // El contador «N nuevos sin presentar» se acredita en la Tarea 12.
+    // La llegada no se presenta sola: queda en la cola de lectura.
+    await expect(page.locator('[data-part="pending-count"]')).toHaveText("1 nuevo sin presentar");
     await page.getByRole("tab", { name: "Hallazgos" }).click();
     const inventory = fixtureOperation(server.run, "retained_then_closed");
     await expect(page.locator("#revision")).toContainText("F001", { timeout: 15000 });
